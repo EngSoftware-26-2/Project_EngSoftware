@@ -1,0 +1,14 @@
+{% extends "core/base.html" %}
+{% block titulo %}{{ acao }} – {{ projeto.nome }}{% endblock %}
+{% block conteudo %}
+<h2>{{ acao }}</h2>
+<form method="post" novalidate>
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  <p>{{ form.titulo.label_tag }}{{ form.titulo }}{{ form.titulo.errors }}</p>
+  <p>{{ form.descricao.label_tag }}{{ form.descricao }}{{ form.descricao.errors }}</p>
+  <button class="botao" type="submit">Salvar</button>
+  {% if epico %}<a class="botao secundario" href="{% url 'epico_detalhe' projeto.id epico.id %}">Cancelar</a>
+  {% else %}<a class="botao secundario" href="{% url 'epico_lista' projeto.id %}">Cancelar</a>{% endif %}
+</form>
+{% endblock %}
