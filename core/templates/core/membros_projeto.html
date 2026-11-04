@@ -1,0 +1,72 @@
+
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Membros do Projeto</title>
+</head>
+<body>
+
+    <h1>Membros de {{ projeto.nome }}</h1>
+
+    <h2>Dono do projeto</h2>
+    <p>
+        {{ projeto.dono.first_name }}
+        ({{ projeto.dono.email }})
+    </p>
+
+    <hr>
+
+    {% if projeto.dono_id == request.user.id %}
+    <h2>Adicionar membro</h2>
+
+    <form method="post">
+        {% csrf_token %}
+
+        {{ form.as_p }}
+
+        <button type="submit">
+            Adicionar membro
+        </button>
+    </form>
+
+    <hr>
+
+    {% endif %}
+    <h2>Membros do projeto</h2>
+
+    {% for membro in membros %}
+
+        <p>
+            {{ membro.first_name }}
+            ({{ membro.email }})
+        </p>
+
+        {% if projeto.dono_id == request.user.id %}
+        <form
+            method="post"
+            action="{% url 'remover_membro' projeto.id membro.id %}"
+            onsubmit="return confirm('Deseja remover este membro?')"
+        >
+            {% csrf_token %}
+
+            <button type="submit">
+                Remover
+            </button>
+        </form>
+        {% endif %}
+
+        <hr>
+
+    {% empty %}
+
+        <p>Este projeto ainda não possui membros.</p>
+
+    {% endfor %}
+
+    <a href="{% url 'inicio' %}">
+        Voltar aos projetos
+    </a>
+
+</body>
+</html>

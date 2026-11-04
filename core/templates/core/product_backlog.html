@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html lang="pt-br"><head><meta charset="UTF-8"><title>Product Backlog</title></head>
+<body><h1>Product Backlog de {{ projeto.nome }}</h1>
+<p>{{ backlog.descricao|linebreaksbr }}</p>
+{% if projeto.dono_id == request.user.id %}
+<a href="{% url 'editar_product_backlog' projeto.pk %}">Editar Product Backlog</a>
+<a href="{% url 'excluir_product_backlog' projeto.pk %}">Excluir Product Backlog</a>
+{% endif %}
+<a href="{% url 'detalhe_projeto' projeto.pk %}">Voltar ao projeto</a>
+</body></html>

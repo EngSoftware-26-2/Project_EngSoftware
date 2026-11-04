@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="pt-br"><head><meta charset="UTF-8"><title>{{ projeto.nome }}</title></head>
+<body><h1>{{ projeto.nome }}</h1><p>{{ projeto.descricao|linebreaksbr }}</p>
+<p>Dono: {{ projeto.dono.first_name }} ({{ projeto.dono.email }})</p>
+<a href="{% url 'membros_projeto' projeto.pk %}">Ver membros</a>
+{% if projeto.product_backlog %}
+<a href="{% url 'product_backlog' projeto.pk %}">Ver Product Backlog</a>
+{% elif projeto.dono_id == request.user.id %}
+<a href="{% url 'criar_product_backlog' projeto.pk %}">Criar Product Backlog</a>
+{% else %}<p>Este projeto não possui Product Backlog.</p>{% endif %}
+{% if projeto.dono_id == request.user.id %}
+<a href="{% url 'editar_projeto' projeto.pk %}">Editar projeto</a>
+<a href="{% url 'excluir_projeto' projeto.pk %}">Excluir projeto</a>
+{% else %}
+<form method="post" action="{% url 'sair_projeto' projeto.pk %}">{% csrf_token %}<button type="submit">Sair do projeto</button></form>
+{% endif %}
+<a href="{% url 'inicio' %}">Voltar aos projetos</a>
+</body></html>

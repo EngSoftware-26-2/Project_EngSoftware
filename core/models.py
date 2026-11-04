@@ -1,21 +1,42 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.conf import settings
 
 # (Requisito 4) CRUD de Projetos
 class Projeto(models.Model):
     nome = models.CharField(max_length=200)
     descricao = models.TextField(blank=True)
     criado_em = models.DateTimeField(auto_now_add=True)
+ 
+    dono = models.ForeignKey(
+    settings.AUTH_USER_MODEL,
+    on_delete=models.PROTECT,
+    related_name="projetos_como_dono"
+)
+
+    # Usuários que participam do projeto
+    membros = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name="projetos_como_membro"
+    )
 
     def __str__(self):
         return self.nome
 
 # (Requisito 5) Product Backlog: pode existir só um por projeto
 class ProductBacklog(models.Model):
-    projeto = models.OneToOneField(Projeto, on_delete=models.CASCADE, related_name='product_backlog')
-    
+    projeto = models.OneToOneField(
+        Projeto,
+        on_delete=models.CASCADE,
+        related_name="product_backlog"
+    )
+
+    descricao = models.TextField(blank=True)
+
     def __str__(self):
         return f"Product Backlog - {self.projeto.nome}"
+
 
 # (Requisito 6) Sprint Backlogs: podem existir vários por projeto
 class SprintBacklog(models.Model):
@@ -77,3 +98,5 @@ class HistoriaUsuario(models.Model):
 
     def __str__(self):
         return f"{self.titulo} (RICE: {self.rice_score})"
+
+

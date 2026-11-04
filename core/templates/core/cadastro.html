@@ -1,0 +1,23 @@
+
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Criar conta</title>
+</head>
+<body>
+    <h1>Criar conta</h1>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+
+        <button type="submit">Cadastrar</button>
+    </form>
+
+    <p>
+        Já possui conta?
+        <a href="{% url 'login' %}">Entrar</a>
+    </p>
+</body>
+</html>
