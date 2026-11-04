@@ -2,11 +2,13 @@
 from django.shortcuts import get_object_or_404, render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.core.exceptions import PermissionDenied
+from django.http import Http404
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q
+from django.db.models.deletion import ProtectedError
 
 from .models import Projeto, ProductBacklog
 
@@ -245,7 +247,10 @@ def projeto_acessivel(usuario, pk):
 
 @login_required(login_url="login")
 def detalhe_projeto(request, pk):
-    projeto = projeto_acessivel(request.user, pk)
+    try:
+        projeto = projeto_acessivel(request.user, pk)
+    except Http404:
+        return redirect("inicio")
     return render(request, "core/detalhe_projeto.html", {"projeto": projeto})
 
 
@@ -264,13 +269,20 @@ def editar_projeto(request, pk):
 @login_required(login_url="login")
 def excluir_projeto(request, pk):
     projeto = get_object_or_404(Projeto, pk=pk, dono=request.user)
+    erro = None
     if request.method == "POST":
-        projeto.delete()
-        return redirect("inicio")
+        try:
+            with transaction.atomic():
+                projeto.delete()
+        except ProtectedError:
+            erro = "Não é possível excluir: há histórias com vínculos inconsistentes entre projetos."
+        else:
+            return redirect("inicio")
     return render(request, "core/confirmar_exclusao.html", {
         "projeto": projeto, "titulo": "Excluir projeto",
         "aviso": "O projeto e seus backlogs, épicos e histórias serão excluídos.",
-    })
+        "erro": erro,
+    }, status=409 if erro else 200)
 
 
 @login_required(login_url="login")
@@ -279,12 +291,15 @@ def product_backlog(request, pk):
     backlog = get_object_or_404(ProductBacklog, projeto=projeto)
     return render(request, "core/product_backlog.html", {
         "projeto": projeto, "backlog": backlog,
+        "historias": backlog.historias.select_related("epico").filter(
+            sprint_backlog__isnull=True,
+        ).filter(Q(epico__isnull=True) | Q(epico__projeto=projeto)).order_by("pk"),
     })
 
 
 @login_required(login_url="login")
 def criar_product_backlog(request, pk):
-    projeto = get_object_or_404(Projeto, pk=pk, dono=request.user)
+    projeto = projeto_acessivel(request.user, pk)
     if ProductBacklog.objects.filter(projeto=projeto).exists():
         return redirect("product_backlog", pk=pk)
     form = ProductBacklogForm(request.POST if request.method == "POST" else None)
@@ -302,7 +317,7 @@ def criar_product_backlog(request, pk):
 
 @login_required(login_url="login")
 def editar_product_backlog(request, pk):
-    projeto = get_object_or_404(Projeto, pk=pk, dono=request.user)
+    projeto = projeto_acessivel(request.user, pk)
     backlog = get_object_or_404(ProductBacklog, projeto=projeto)
     form = ProductBacklogForm(
         request.POST if request.method == "POST" else None, instance=backlog,
@@ -317,14 +332,19 @@ def editar_product_backlog(request, pk):
 
 @login_required(login_url="login")
 def excluir_product_backlog(request, pk):
-    projeto = get_object_or_404(Projeto, pk=pk, dono=request.user)
+    projeto = projeto_acessivel(request.user, pk)
     backlog = get_object_or_404(ProductBacklog, projeto=projeto)
+    erro = None
     if request.method == "POST":
-        with transaction.atomic():
-            backlog.historias.update(product_backlog=None)
-            backlog.delete()
-        return redirect("detalhe_projeto", pk=pk)
+        try:
+            with transaction.atomic():
+                backlog.delete()
+        except ProtectedError:
+            erro = "Não é possível excluir o Product Backlog enquanto houver histórias no projeto, inclusive em Sprint Backlogs."
+        else:
+            return redirect("detalhe_projeto", pk=pk)
     return render(request, "core/confirmar_exclusao.html", {
         "projeto": projeto, "titulo": "Excluir Product Backlog",
-        "aviso": "As histórias serão preservadas e desvinculadas deste Product Backlog.",
-    })
+        "aviso": "A exclusão é permitida somente sem histórias no projeto, inclusive nos Sprints. O backlog não será recriado automaticamente; participantes poderão criá-lo novamente.",
+        "erro": erro,
+    }, status=409 if erro else 200)

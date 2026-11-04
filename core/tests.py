@@ -1,6 +1,8 @@
 from django.contrib.auth.models import User
-from django.db import IntegrityError, transaction
-from django.test import Client, TestCase
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, connection, transaction
+from django.db.models.deletion import ProtectedError
+from django.test import Client, TestCase, TransactionTestCase
 from django.urls import reverse
 
 from .models import Projeto, ProductBacklog, HistoriaUsuario, Epico, SprintBacklog
@@ -100,7 +102,8 @@ class ProjetoTests(TestCase):
             for name in ["detalhe_projeto", "membros_projeto", "product_backlog"]:
                 self.assertEqual(self.client.get(self.url(name)).status_code, 200)
         self.client.force_login(self.outro)
-        for name in ["detalhe_projeto", "membros_projeto", "product_backlog"]:
+        self.assertRedirects(self.client.get(self.url("detalhe_projeto")), reverse("inicio"))
+        for name in ["membros_projeto", "product_backlog"]:
             self.assertEqual(self.client.get(self.url(name)).status_code, 404)
 
     def test_editar_projeto_nao_transfere_dono(self):
@@ -127,8 +130,7 @@ class ProjetoTests(TestCase):
     def test_mutacoes_exclusivas_do_dono(self):
         for user in [self.membro, self.outro]:
             self.client.force_login(user)
-            for name in ["editar_projeto", "excluir_projeto", "criar_product_backlog",
-                         "editar_product_backlog", "excluir_product_backlog"]:
+            for name in ["editar_projeto", "excluir_projeto"]:
                 for method in [self.client.get, self.client.post]:
                     with self.subTest(user=user.username, name=name, method=method.__name__):
                         self.assertEqual(method(self.url(name), {"nome": "Invadido", "descricao": "Invadido"}).status_code, 404)
@@ -162,7 +164,7 @@ class ProjetoTests(TestCase):
         self.client.force_login(self.membro)
         self.assertEqual(self.client.get(self.url("sair_projeto")).status_code, 405)
         self.assertRedirects(self.client.post(self.url("sair_projeto")), reverse("inicio"))
-        self.assertEqual(self.client.get(self.url("detalhe_projeto")).status_code, 404)
+        self.assertRedirects(self.client.get(self.url("detalhe_projeto")), reverse("inicio"))
         self.assertTrue(Projeto.objects.filter(pk=self.projeto.pk).exists())
 
     def test_dono_e_estranho_nao_podem_sair(self):
@@ -174,7 +176,7 @@ class ProjetoTests(TestCase):
         epico = Epico.objects.create(projeto=self.projeto, titulo="Épico")
         sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1")
         historia = HistoriaUsuario.objects.create(
-            titulo="História", product_backlog=self.backlog, sprint_backlog=sprint,
+            titulo="História", product_backlog=self.backlog,
             epico=epico, papel="Pessoa", acao="Agir", beneficio="Benefício",
             contexto="Contexto", evento="Evento", resultado="Resultado",
             story_points=5, reach=10, impact=2, confidence=80,
@@ -185,12 +187,23 @@ class ProjetoTests(TestCase):
         self.assertContains(self.client.get(self.url("product_backlog")), "Atualizada")
         self.assertEqual(self.client.get(self.url("excluir_product_backlog")).status_code, 200)
         self.assertTrue(ProductBacklog.objects.filter(pk=self.backlog.pk).exists())
-        self.assertRedirects(self.client.post(self.url("excluir_product_backlog")), self.url("detalhe_projeto"))
+        response = self.client.post(self.url("excluir_product_backlog"))
+        self.assertContains(response, "Não é possível excluir", status_code=409)
         historia.refresh_from_db()
-        self.assertIsNone(historia.product_backlog_id)
+        self.assertEqual(historia.product_backlog_id, self.backlog.pk)
         self.assertEqual(historia.epico_id, epico.pk)
+        self.assertIsNone(historia.sprint_backlog_id)
+        self.assertEqual(historia.rice_score, score)
+        # Movimentar a história para um Sprint não libera a exclusão do PB.
+        historia.product_backlog = None
+        historia.sprint_backlog = sprint
+        historia.save()
+        self.assertEqual(self.client.post(self.url("excluir_product_backlog")).status_code, 409)
+        historia.refresh_from_db()
         self.assertEqual(historia.sprint_backlog_id, sprint.pk)
         self.assertEqual(historia.rice_score, score)
+        historia.delete()
+        self.assertRedirects(self.client.post(self.url("excluir_product_backlog")), self.url("detalhe_projeto"))
         self.assertEqual(self.client.get(self.url("product_backlog")).status_code, 404)
         self.assertEqual(self.client.get(self.url("criar_product_backlog")).status_code, 200)
         self.assertFalse(ProductBacklog.objects.filter(projeto=self.projeto).exists())
@@ -220,3 +233,311 @@ class ProjetoTests(TestCase):
         client.force_login(self.dono)
         for name in ["editar_projeto", "excluir_projeto", "membros_projeto", "excluir_product_backlog"]:
             self.assertEqual(client.post(self.url(name), {}).status_code, 403)
+
+
+    def historia(self, **kwargs):
+        dados = {
+            "titulo": "História", "product_backlog": self.backlog,
+            "papel": "Pessoa", "acao": "Agir", "beneficio": "Benefício",
+            "contexto": "Contexto", "evento": "Evento", "resultado": "Resultado",
+            "story_points": 5, "reach": 10, "impact": 2, "confidence": 80,
+        }
+        dados.update(kwargs)
+        return HistoriaUsuario.objects.create(**dados)
+
+    def test_membro_gerencia_crud_backlog_vazio(self):
+        self.client.force_login(self.membro)
+        response = self.client.get(self.url("product_backlog"))
+        self.assertContains(response, "Editar Product Backlog")
+        self.assertContains(response, "Excluir Product Backlog")
+        self.assertEqual(self.client.get(self.url("editar_product_backlog")).status_code, 200)
+        self.assertRedirects(self.client.post(self.url("editar_product_backlog"), {"descricao": "Pelo membro"}), self.url("product_backlog"))
+        self.assertContains(self.client.get(self.url("product_backlog")), "Pelo membro")
+        self.assertEqual(self.client.get(self.url("excluir_product_backlog")).status_code, 200)
+        self.assertTrue(ProductBacklog.objects.filter(pk=self.backlog.pk).exists())
+        self.assertRedirects(self.client.post(self.url("excluir_product_backlog")), self.url("detalhe_projeto"))
+        self.assertFalse(ProductBacklog.objects.filter(projeto=self.projeto).exists())
+        self.assertContains(self.client.get(self.url("detalhe_projeto")), "Criar Product Backlog")
+        self.assertFalse(ProductBacklog.objects.filter(projeto=self.projeto).exists())
+        self.assertEqual(self.client.get(self.url("criar_product_backlog")).status_code, 200)
+        self.assertRedirects(self.client.post(self.url("criar_product_backlog"), {"descricao": "Novo"}), self.url("product_backlog"))
+        self.assertEqual(ProductBacklog.objects.get(projeto=self.projeto).descricao, "Novo")
+
+    def test_externo_nao_manipula_backlog_por_get_ou_post(self):
+        self.client.force_login(self.outro)
+        for name in ["product_backlog", "criar_product_backlog", "editar_product_backlog", "excluir_product_backlog"]:
+            for method in [self.client.get, self.client.post]:
+                self.assertEqual(method(self.url(name), {"descricao": "Invadido"}).status_code, 404)
+        self.backlog.refresh_from_db()
+        self.assertEqual(self.backlog.descricao, "Original")
+
+    def test_membro_nao_exclui_backlog_com_historia(self):
+        historia = self.historia()
+        self.client.force_login(self.membro)
+        self.assertContains(self.client.post(self.url("excluir_product_backlog")), "Não é possível excluir", status_code=409)
+        historia.refresh_from_db()
+        self.assertEqual(historia.product_backlog_id, self.backlog.pk)
+
+    def test_protecao_backlog_tambem_em_delete_e_queryset(self):
+        historia = self.historia()
+        for excluir in [self.backlog.delete, lambda: ProductBacklog.objects.filter(pk=self.backlog.pk).delete()]:
+            with self.assertRaises(ProtectedError), transaction.atomic():
+                excluir()
+        historia.refresh_from_db()
+        self.assertEqual(historia.product_backlog_id, self.backlog.pk)
+
+    def test_exclusao_backlog_nao_afeta_outro_projeto(self):
+        outro_projeto = Projeto.objects.create(nome="Outro", dono=self.outro)
+        outro_pb = ProductBacklog.objects.create(projeto=outro_projeto)
+        historia = self.historia(product_backlog=outro_pb)
+        self.assertRedirects(self.client.post(self.url("excluir_product_backlog")), self.url("detalhe_projeto"))
+        historia.refresh_from_db()
+        self.assertEqual(historia.product_backlog_id, outro_pb.pk)
+        self.assertEqual(historia.rice_score, 320)
+
+    def test_projeto_exclui_historias_de_product_e_sprint_sem_afetar_outros(self):
+        epico = Epico.objects.create(projeto=self.projeto, titulo="Épico")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        historias = [self.historia(epico=epico), self.historia(product_backlog=None, sprint_backlog=sprint),
+                     self.historia(product_backlog=None, sprint_backlog=sprint, epico=epico)]
+        outro_projeto = Projeto.objects.create(nome="Outro", dono=self.outro)
+        outro_pb = ProductBacklog.objects.create(projeto=outro_projeto)
+        outra = self.historia(product_backlog=outro_pb)
+        self.assertRedirects(self.client.post(self.url("excluir_projeto")), reverse("inicio"))
+        self.assertFalse(HistoriaUsuario.objects.filter(pk__in=[h.pk for h in historias]).exists())
+        self.assertFalse(Epico.objects.filter(pk=epico.pk).exists())
+        self.assertFalse(SprintBacklog.objects.filter(pk=sprint.pk).exists())
+        outra.refresh_from_db()
+        self.assertEqual(outra.product_backlog_id, outro_pb.pk)
+        self.assertEqual(outra.rice_score, 320)
+        self.assertEqual(User.objects.count(), 3)
+
+    def test_exclusao_projeto_queryset_remove_historias_sprint(self):
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        historia = self.historia(product_backlog=None, sprint_backlog=sprint)
+        Projeto.objects.filter(pk=self.projeto.pk).delete()
+        self.assertFalse(HistoriaUsuario.objects.filter(pk=historia.pk).exists())
+
+    def test_exclusao_projeto_e_atomica(self):
+        from unittest.mock import patch
+        historia = self.historia()
+        original = Projeto.delete
+
+        def falhar(projeto):
+            original(projeto)
+            raise RuntimeError("Falha simulada após exclusão")
+
+        with patch.object(Projeto, "delete", falhar), self.assertRaises(RuntimeError):
+            self.client.post(self.url("excluir_projeto"))
+        historia.refresh_from_db()
+        self.assertEqual(historia.product_backlog_id, self.backlog.pk)
+        self.assertTrue(Projeto.objects.filter(pk=self.projeto.pk).exists())
+
+    def test_hu08_backlog_vazio(self):
+        self.assertContains(self.client.get(self.url("product_backlog")), "O Product Backlog está vazio.")
+
+    def test_hu08_dados_das_historias_e_isolamento(self):
+        epico = Epico.objects.create(projeto=self.projeto, titulo="Épico visível")
+        historia = self.historia(titulo="História visível", epico=epico, moscow="S")
+        self.historia(titulo="Sem épico visível", story_points=0)
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        self.historia(titulo="Somente no Sprint", product_backlog=None, sprint_backlog=sprint)
+        outro = Projeto.objects.create(nome="Privado", dono=self.outro)
+        outro_pb = ProductBacklog.objects.create(projeto=outro)
+        self.historia(titulo="História privada", product_backlog=outro_pb)
+        for user in [self.dono, self.membro]:
+            self.client.force_login(user)
+            response = self.client.get(self.url("product_backlog"))
+            for valor in ["História visível", "Story Points", "Should Have", "RICE", "Épico visível", "Sem épico", "320.00", "0.00"]:
+                self.assertContains(response, valor)
+            self.assertNotContains(response, "Somente no Sprint")
+            self.assertNotContains(response, "História privada")
+            self.assertNotContains(response, "O Product Backlog está vazio.")
+            self.assertIn(historia, response.context["historias"])
+
+    def test_remover_membro_preserva_historias_e_conta(self):
+        historia = self.historia()
+        self.assertRedirects(self.client.post(self.url("remover_membro", usuario_id=self.membro.pk)), self.url("membros_projeto"))
+        historia.refresh_from_db()
+        self.assertEqual(historia.product_backlog_id, self.backlog.pk)
+        self.assertTrue(User.objects.filter(pk=self.membro.pk).exists())
+        self.client.force_login(self.membro)
+        self.assertEqual(self.client.post(self.url("editar_product_backlog"), {"descricao": "Negada"}).status_code, 404)
+
+    def test_modelo_rejeita_dois_backlogs_e_sem_backlog(self):
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        with self.assertRaises(ValidationError):
+            self.historia(sprint_backlog=sprint)
+        with self.assertRaises(ValidationError):
+            self.historia(product_backlog=None)
+
+    def test_banco_rejeita_dois_backlogs_em_update_e_bulk_create(self):
+        historia = self.historia()
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            HistoriaUsuario.objects.filter(pk=historia.pk).update(sprint_backlog=sprint)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            HistoriaUsuario.objects.bulk_create([HistoriaUsuario(product_backlog=self.backlog, sprint_backlog=sprint)])
+
+    def test_banco_rejeita_novas_historias_orfas_e_desvinculacao(self):
+        historia = self.historia()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            HistoriaUsuario.objects.bulk_create([HistoriaUsuario(titulo="Órfã")])
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            HistoriaUsuario.objects.filter(pk=historia.pk).update(product_backlog=None)
+
+    def test_movimentacao_entre_backlogs_preserva_rice_e_epico(self):
+        epico = Epico.objects.create(projeto=self.projeto, titulo="Épico")
+        historia = self.historia(epico=epico)
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        historia.product_backlog = None
+        historia.sprint_backlog = sprint
+        historia.save(update_fields=["product_backlog", "sprint_backlog"])
+        historia.refresh_from_db()
+        self.assertEqual(historia.sprint_backlog_id, sprint.pk)
+        self.assertEqual(historia.epico_id, epico.pk)
+        self.assertEqual(historia.rice_score, 320)
+        HistoriaUsuario.objects.filter(pk=historia.pk).update(sprint_backlog=None, product_backlog=self.backlog)
+        historia.refresh_from_db()
+        self.assertEqual(historia.product_backlog_id, self.backlog.pk)
+        self.assertIsNone(historia.sprint_backlog_id)
+
+    def test_epico_e_backlog_de_projetos_diferentes_rejeitados(self):
+        outro = Projeto.objects.create(nome="Outro", dono=self.outro)
+        epico = Epico.objects.create(projeto=outro, titulo="Outro épico")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        for dados in [{"epico": epico}, {"epico": epico, "product_backlog": None, "sprint_backlog": sprint}]:
+            with self.assertRaises(ValidationError):
+                self.historia(**dados)
+        historia = self.historia()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            HistoriaUsuario.objects.filter(pk=historia.pk).update(epico=epico)
+        historia.epico = epico
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            HistoriaUsuario.objects.bulk_update([historia], ["epico"])
+
+    def test_banco_rejeita_trocar_projeto_de_backlog_ou_epico_incompativel(self):
+        outro = Projeto.objects.create(nome="Outro", dono=self.outro)
+        epico = Epico.objects.create(projeto=self.projeto, titulo="Épico")
+        self.historia(epico=epico)
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        self.historia(product_backlog=None, sprint_backlog=sprint, epico=epico)
+        for objeto in [self.backlog, sprint, epico]:
+            with self.assertRaises(IntegrityError), transaction.atomic():
+                type(objeto).objects.filter(pk=objeto.pk).update(projeto=outro)
+
+    def test_save_parcial_valida_estado_persistido(self):
+        historia = self.historia()
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        historia.product_backlog = None
+        historia.sprint_backlog = sprint
+        with self.assertRaises(ValidationError):
+            historia.save(update_fields=["sprint_backlog"])
+
+    def test_exclusoes_com_csrf_valido_e_confirmacao_sem_mutacao(self):
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.dono)
+        for name in ["excluir_product_backlog", "excluir_projeto"]:
+            response = client.get(self.url(name))
+            self.assertContains(response, "Confirmar exclusão")
+            self.assertTrue(Projeto.objects.filter(pk=self.projeto.pk).exists())
+            self.assertEqual(client.post(self.url(name)).status_code, 403)
+        token = client.cookies["csrftoken"].value
+        self.assertEqual(client.post(self.url("excluir_product_backlog"), {"csrfmiddlewaretoken": token}).status_code, 302)
+        self.assertEqual(client.post(self.url("excluir_projeto"), {"csrfmiddlewaretoken": token}).status_code, 302)
+
+
+    def test_sprint_com_historias_nao_pode_deixar_orfas_na_exclusao(self):
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        historia = self.historia(product_backlog=None, sprint_backlog=sprint)
+        with self.assertRaisesMessage(ProtectedError, "Mova as histórias"), transaction.atomic():
+            sprint.delete()
+        historia.refresh_from_db()
+        self.assertEqual(historia.sprint_backlog_id, sprint.pk)
+        historia.sprint_backlog = None
+        historia.product_backlog = self.backlog
+        historia.save()
+        sprint.delete()
+        historia.refresh_from_db()
+        self.assertEqual(historia.product_backlog_id, self.backlog.pk)
+
+
+class MigracaoIntegridadeTests(TransactionTestCase):
+    antiga = ("core", "0003_alter_projeto_dono")
+    atual = ("core", "0005_integridade_vinculos_historias")
+
+    def setUp(self):
+        from django.db.migrations.executor import MigrationExecutor
+        executor = MigrationExecutor(connection)
+        executor.migrate([self.antiga])
+        self.apps_antigas = executor.loader.project_state([self.antiga]).apps
+        self.dono = User.objects.create_user("dono_legado")
+        self.ProjetoAntigo = self.apps_antigas.get_model("core", "Projeto")
+        self.HistoriaAntiga = self.apps_antigas.get_model("core", "HistoriaUsuario")
+        self.projeto = self.ProjetoAntigo.objects.create(nome="Legado", dono_id=self.dono.pk)
+        self.pb = self.apps_antigas.get_model("core", "ProductBacklog").objects.create(projeto=self.projeto)
+
+    def migrar(self):
+        from django.db.migrations.executor import MigrationExecutor
+        MigrationExecutor(connection).migrate([self.atual])
+
+    def tearDown(self):
+        self.migrar()
+        super().tearDown()
+
+    def test_legados_sem_identificacao_preservados_e_exclusao_por_epico(self):
+        EpicoAntigo = self.apps_antigas.get_model("core", "Epico")
+        epico = EpicoAntigo.objects.create(projeto=self.projeto, titulo="Legado")
+        historia_epico = self.HistoriaAntiga.objects.create(titulo="Só épico", epico=epico)
+        sem_identificacao = self.HistoriaAntiga.objects.create(titulo="Sem identificação")
+        self.migrar()
+        historia = HistoriaUsuario.objects.get(pk=sem_identificacao.pk)
+        self.assertIsNone(historia.product_backlog_id)
+        self.assertIsNone(historia.sprint_backlog_id)
+        self.assertIsNone(historia.epico_id)
+        self.client.force_login(self.dono)
+        url = reverse("excluir_projeto", args=[self.projeto.pk])
+        self.assertRedirects(self.client.post(url), reverse("inicio"))
+        self.assertFalse(HistoriaUsuario.objects.filter(pk=historia_epico.pk).exists())
+        self.assertTrue(HistoriaUsuario.objects.filter(pk=sem_identificacao.pk).exists())
+
+    def test_migracao_recusa_dois_backlogs_sem_escolher_destino(self):
+        SprintAntigo = self.apps_antigas.get_model("core", "SprintBacklog")
+        sprint = SprintAntigo.objects.create(projeto=self.projeto, nome="Sprint")
+        historia = self.HistoriaAntiga.objects.create(product_backlog=self.pb, sprint_backlog=sprint)
+        try:
+            with self.assertRaisesMessage(RuntimeError, "Histórias com vínculos inconsistentes"):
+                self.migrar()
+            historia.refresh_from_db()
+            self.assertEqual(historia.product_backlog_id, self.pb.pk)
+            self.assertEqual(historia.sprint_backlog_id, sprint.pk)
+        finally:
+            historia.delete()
+
+    def test_migracao_recusa_vinculos_entre_projetos(self):
+        outro = self.ProjetoAntigo.objects.create(nome="Outro", dono_id=self.dono.pk)
+        EpicoAntigo = self.apps_antigas.get_model("core", "Epico")
+        epico = EpicoAntigo.objects.create(projeto=outro, titulo="Outro épico")
+        historia = self.HistoriaAntiga.objects.create(product_backlog=self.pb, epico=epico)
+        try:
+            with self.assertRaisesMessage(RuntimeError, "Histórias com vínculos inconsistentes"):
+                self.migrar()
+            historia.refresh_from_db()
+            self.assertEqual(historia.epico_id, epico.pk)
+        finally:
+            historia.delete()
+
+    def test_exclusao_bloqueada_para_vinculos_legados_entre_projetos(self):
+        outro = self.ProjetoAntigo.objects.create(nome="Outro", dono_id=self.dono.pk)
+        epico = self.apps_antigas.get_model("core", "Epico").objects.create(projeto=outro, titulo="Outro épico")
+        historia = self.HistoriaAntiga.objects.create(product_backlog=self.pb, epico=epico)
+        try:
+            self.client.force_login(self.dono)
+            response = self.client.post(reverse("excluir_projeto", args=[self.projeto.pk]))
+            self.assertContains(response, "vínculos inconsistentes", status_code=409)
+            self.assertTrue(self.ProjetoAntigo.objects.filter(pk=self.projeto.pk).exists())
+            historia.refresh_from_db()
+            self.assertEqual(historia.epico_id, epico.pk)
+            self.assertTrue(self.ProjetoAntigo.objects.filter(pk=outro.pk).exists())
+        finally:
+            historia.delete()

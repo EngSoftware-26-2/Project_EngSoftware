@@ -5,9 +5,9 @@
 <a href="{% url 'membros_projeto' projeto.pk %}">Ver membros</a>
 {% if projeto.product_backlog %}
 <a href="{% url 'product_backlog' projeto.pk %}">Ver Product Backlog</a>
-{% elif projeto.dono_id == request.user.id %}
+{% else %}
 <a href="{% url 'criar_product_backlog' projeto.pk %}">Criar Product Backlog</a>
-{% else %}<p>Este projeto não possui Product Backlog.</p>{% endif %}
+{% endif %}
 {% if projeto.dono_id == request.user.id %}
 <a href="{% url 'editar_projeto' projeto.pk %}">Editar projeto</a>
 <a href="{% url 'excluir_projeto' projeto.pk %}">Excluir projeto</a>

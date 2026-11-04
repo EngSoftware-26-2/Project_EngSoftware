@@ -1,13 +1,13 @@
 from django.db import models
-from django.contrib.auth.models import User
 from django.conf import settings
+from django.core.exceptions import ValidationError
 
 # (Requisito 4) CRUD de Projetos
 class Projeto(models.Model):
     nome = models.CharField(max_length=200)
     descricao = models.TextField(blank=True)
     criado_em = models.DateTimeField(auto_now_add=True)
- 
+
     dono = models.ForeignKey(
     settings.AUTH_USER_MODEL,
     on_delete=models.PROTECT,
@@ -89,14 +89,45 @@ class HistoriaUsuario(models.Model):
     confidence = models.IntegerField(choices=CONFIDENCE_CHOICES, default=80)
     # Esforço (Effort) é o próprio valor dos story_points
 
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=(models.Q(product_backlog__isnull=True) |
+                           models.Q(sprint_backlog__isnull=True)),
+                name="historia_apenas_um_backlog",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.product_backlog_id and self.sprint_backlog_id:
+            raise ValidationError("A história deve estar em apenas um backlog por vez.")
+        if not self.product_backlog_id and not self.sprint_backlog_id:
+            raise ValidationError("A história deve estar associada a um backlog.")
+        backlog = self.product_backlog if self.product_backlog_id else self.sprint_backlog
+        if self.epico_id and self.epico.projeto_id != backlog.projeto_id:
+            raise ValidationError({"epico": "O épico e o backlog devem pertencer ao mesmo projeto."})
+
+    def save(self, *args, **kwargs):
+        # ModelForms já validam; esta chamada também protege criações pelo ORM.
+        # Valida o estado efetivamente persistido quando save é parcial.
+        update_fields = kwargs.get("update_fields")
+        if update_fields and self.pk:
+            persisted = type(self).objects.get(pk=self.pk)
+            for field in update_fields:
+                model_field = self._meta.get_field(field)
+                setattr(persisted, model_field.attname, getattr(self, model_field.attname))
+            persisted.clean()
+        else:
+            self.clean()
+        return super().save(*args, **kwargs)
+
     @property
     def rice_score(self):
         # Cálculo RICE: (R x I x C) / E (Requisito 19)
         if self.story_points == 0:
-            return 0 
+            return 0
         return (self.reach * self.impact * self.confidence) / self.story_points
 
     def __str__(self):
         return f"{self.titulo} (RICE: {self.rice_score})"
-
-

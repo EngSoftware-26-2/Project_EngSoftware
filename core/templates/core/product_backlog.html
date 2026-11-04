@@ -2,9 +2,19 @@
 <html lang="pt-br"><head><meta charset="UTF-8"><title>Product Backlog</title></head>
 <body><h1>Product Backlog de {{ projeto.nome }}</h1>
 <p>{{ backlog.descricao|linebreaksbr }}</p>
-{% if projeto.dono_id == request.user.id %}
 <a href="{% url 'editar_product_backlog' projeto.pk %}">Editar Product Backlog</a>
 <a href="{% url 'excluir_product_backlog' projeto.pk %}">Excluir Product Backlog</a>
-{% endif %}
+<h2>Histórias</h2>
+<table>
+<thead><tr><th>Título</th><th>Story Points</th><th>MoSCoW</th><th>RICE</th><th>Épico</th></tr></thead>
+<tbody>
+{% for historia in historias %}
+<tr><td>{{ historia.titulo }}</td><td>{{ historia.story_points }}</td>
+<td>{{ historia.get_moscow_display }}</td><td>{{ historia.rice_score|floatformat:2 }}</td>
+<td>{{ historia.epico.titulo|default:"Sem épico" }}</td></tr>
+{% empty %}
+<tr><td colspan="5">O Product Backlog está vazio.</td></tr>
+{% endfor %}
+</tbody></table>
 <a href="{% url 'detalhe_projeto' projeto.pk %}">Voltar ao projeto</a>
 </body></html>
