@@ -15,6 +15,9 @@ def historias_do_projeto(projeto_id, using="default"):
     )
 
 
+# HU08 - O Product Backlog só pode ser excluído quando o projeto não tem nenhuma história,
+# nem mesmo em Sprint Backlogs (evita apagar histórias sem querer). Ao excluir o projeto
+# inteiro (HU07), a regra não se aplica.
 @receiver(pre_delete, sender=ProductBacklog)
 def proteger_product_backlog(sender, instance, using, origin, **kwargs):
     # A exclusão completa do projeto deve continuar removendo seus dependentes.
@@ -29,6 +32,8 @@ def proteger_product_backlog(sender, instance, using, origin, **kwargs):
         )
 
 
+# HU10 - Um Sprint Backlog com histórias não pode ser excluído; as histórias precisam ser
+# movidas antes (requisito 8). Ao excluir o projeto inteiro, a regra não se aplica.
 @receiver(pre_delete, sender=SprintBacklog)
 def proteger_historias_do_sprint(sender, instance, using, origin, **kwargs):
     if isinstance(origin, Projeto) or getattr(origin, "model", None) is Projeto:
@@ -41,6 +46,8 @@ def proteger_historias_do_sprint(sender, instance, using, origin, **kwargs):
         )
 
 
+# HU07 - Ao excluir o projeto, apaga também as histórias que estão só em Sprint Backlogs
+# ou épicos, que o CASCADE do Django não alcançaria.
 @receiver(pre_delete, sender=Projeto)
 def excluir_historias_do_projeto(sender, instance, using, **kwargs):
     historias = historias_do_projeto(instance.pk, using)

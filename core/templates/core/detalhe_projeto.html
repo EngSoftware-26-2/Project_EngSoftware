@@ -8,6 +8,9 @@
 {% else %}
 <a href="{% url 'criar_product_backlog' projeto.pk %}">Criar Product Backlog</a>
 {% endif %}
+{# ADICIONADO: acesso às histórias (HU12-HU14) e aos épicos (HU15-HU17) do projeto #}
+<a href="{% url 'historia_lista' projeto.pk %}">Histórias</a>
+<a href="{% url 'epico_lista' projeto.pk %}">Épicos</a>
 {% if projeto.dono_id == request.user.id %}
 <a href="{% url 'editar_projeto' projeto.pk %}">Editar projeto</a>
 <a href="{% url 'excluir_projeto' projeto.pk %}">Excluir projeto</a>

@@ -1,0 +1,20 @@
+{% extends "core/base.html" %}
+{% block titulo %}Épicos – {{ projeto.nome }}{% endblock %}
+{% block conteudo %}
+<h2>Épicos</h2>
+<a class="botao" href="{% url 'epico_criar' projeto.id %}">Novo épico</a>
+{% if epicos %}
+<table>
+  <tr><th>Nome</th><th>Descrição</th><th>Histórias</th></tr>
+  {% for e in epicos %}
+  <tr>
+    <td><a href="{% url 'epico_detalhe' projeto.id e.id %}">{{ e.titulo }}</a></td>
+    <td>{{ e.descricao|default:"—" }}</td>
+    <td>{{ e.historias.all|length }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="vazio">Ainda não há épicos neste projeto.</p>
+{% endif %}
+{% endblock %}
