@@ -5,12 +5,17 @@
 <a href="{% url 'editar_product_backlog' projeto.pk %}">Editar Product Backlog</a>
 <a href="{% url 'excluir_product_backlog' projeto.pk %}">Excluir Product Backlog</a>
 <h2>Histórias</h2>
+{# ADICIONADO: atalho para criar história (HU12) #}
+<a href="{% url 'historia_criar' projeto.pk %}">Nova história</a>
 <table>
 <thead><tr><th>Título</th><th>Story Points</th><th>MoSCoW</th><th>RICE</th><th>Épico</th></tr></thead>
 <tbody>
 {% for historia in historias %}
-<tr><td>{{ historia.titulo }}</td><td>{{ historia.story_points }}</td>
-<td>{{ historia.get_moscow_display }}</td><td>{{ historia.rice_score|floatformat:2 }}</td>
+{% comment %} ALTERADO: o título virou link para o detalhe da história; Story Points e RICE passaram a
+   usar story_points_display e rice_display, porque agora podem estar vazios ("sem
+   estimativa", "RICE incompleto", "não calculável") e o floatformat mostrava em branco. {% endcomment %}
+<tr><td><a href="{% url 'historia_detalhe' projeto.pk historia.pk %}">{{ historia.titulo }}</a></td><td>{{ historia.story_points_display }}</td>
+<td>{{ historia.get_moscow_display|default:"Sem etiqueta" }}</td><td>{{ historia.rice_display }}</td>
 <td>{{ historia.epico.titulo|default:"Sem épico" }}</td></tr>
 {% empty %}
 <tr><td colspan="5">O Product Backlog está vazio.</td></tr>

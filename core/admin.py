@@ -10,13 +10,15 @@ admin.site.register(Epico)
 # Configura a vista da História de Utilizador para mostrar a pontuação RICE na lista
 @admin.register(HistoriaUsuario)
 class HistoriaUsuarioAdmin(admin.ModelAdmin):
-    list_display = ('titulo', 'projeto_vinculado', 'story_points', 'rice_score_display')
+    list_display = ('titulo', 'projeto_vinculado', 'epico', 'story_points', 'moscow', 'rice_score_display')
     
     def projeto_vinculado(self, obj):
-        if obj.product_backlog:
-            return obj.product_backlog.projeto.nome
-        return "-"
+        # ALTERADO: usa a propriedade projeto do model, que também encontra histórias que
+        # estejam só num Sprint Backlog.
+        return obj.projeto.nome if obj.projeto else "-"
     
     def rice_score_display(self, obj):
-        return round(obj.rice_score, 2)
+        # ALTERADO: rice_score agora pode ser None (RICE incompleto ou Effort = 0), e
+        # round(None) quebrava a listagem. rice_display já devolve o texto certo para cada caso.
+        return obj.rice_display
     rice_score_display.short_description = 'Pontuação RICE'

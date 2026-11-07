@@ -1,0 +1,27 @@
+{% extends "core/base.html" %}
+{% block titulo %}{{ epico.titulo }} – {{ projeto.nome }}{% endblock %}
+{% block conteudo %}
+<h2>Épico: {{ epico.titulo }}</h2>
+{% if epico.descricao %}<p>{{ epico.descricao }}</p>{% endif %}
+<h3>Histórias ligadas</h3>
+{% if historias %}
+<table>
+  <tr><th>Título</th><th>Story Points</th><th>MoSCoW</th><th>RICE</th></tr>
+  {% for h in historias %}
+  <tr>
+    <td><a href="{% url 'historia_detalhe' projeto.id h.id %}">{{ h.titulo }}</a></td>
+    <td>{{ h.story_points_display }}</td>
+    <td>{{ h.moscow|default:"—" }}</td>
+    <td>{{ h.rice_display }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="vazio">Nenhuma história ligada a este épico. Para ligar, edite uma história e escolha este épico.</p>
+{% endif %}
+<p>
+  <a class="botao" href="{% url 'epico_editar' projeto.id epico.id %}">Editar</a>
+  <a class="botao perigo" href="{% url 'epico_excluir' projeto.id epico.id %}">Excluir</a>
+  <a class="botao secundario" href="{% url 'epico_lista' projeto.id %}">Voltar</a>
+</p>
+{% endblock %}

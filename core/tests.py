@@ -8,6 +8,7 @@ from django.urls import reverse
 from .models import Projeto, ProductBacklog, HistoriaUsuario, Epico, SprintBacklog
 
 
+# HU01-HU03: cadastro, login por e-mail e logout
 class AutenticacaoTests(TestCase):
     def test_cadastro_autentica_e_armazena_hash(self):
         response = self.client.post(reverse("cadastro"), {
@@ -63,6 +64,8 @@ class AutenticacaoTests(TestCase):
         self.assertNotIn("_auth_user_id", self.client.session)
 
 
+# HU04-HU08 e HU22-HU24: projetos, Product Backlog, dono e membros, além das regras de
+# integridade dos vínculos das histórias (requisitos 4, 5, 7, 8 e 11)
 class ProjetoTests(TestCase):
     def setUp(self):
         self.dono = User.objects.create_user("dono", email="dono@example.com")
@@ -179,7 +182,9 @@ class ProjetoTests(TestCase):
             titulo="História", product_backlog=self.backlog,
             epico=epico, papel="Pessoa", acao="Agir", beneficio="Benefício",
             contexto="Contexto", evento="Evento", resultado="Resultado",
-            story_points=5, reach=10, impact=2, confidence=80,
+            # ALTERADO: incluído effort=5. O RICE agora divide pelo campo Effort (requisitos 17
+            # e 18), e não mais pelos Story Points; sem Effort o RICE fica "incompleto".
+            story_points=5, reach=10, impact=2, confidence=80, effort=5,
         )
         score = historia.rice_score
         self.assertEqual(self.client.get(self.url("editar_product_backlog")).status_code, 200)
@@ -240,7 +245,9 @@ class ProjetoTests(TestCase):
             "titulo": "História", "product_backlog": self.backlog,
             "papel": "Pessoa", "acao": "Agir", "beneficio": "Benefício",
             "contexto": "Contexto", "evento": "Evento", "resultado": "Resultado",
-            "story_points": 5, "reach": 10, "impact": 2, "confidence": 80,
+            # ALTERADO: incluído "effort": 5, pelo mesmo motivo do teste acima. O score
+            # esperado continua 320 = (10 x 2 x 80) / 5.
+            "story_points": 5, "reach": 10, "impact": 2, "confidence": 80, "effort": 5,
         }
         dados.update(kwargs)
         return HistoriaUsuario.objects.create(**dados)
@@ -348,7 +355,10 @@ class ProjetoTests(TestCase):
         for user in [self.dono, self.membro]:
             self.client.force_login(user)
             response = self.client.get(self.url("product_backlog"))
-            for valor in ["História visível", "Story Points", "Should Have", "RICE", "Épico visível", "Sem épico", "320.00", "0.00"]:
+            # ALTERADO: a tela agora mostra "320" (rice_display) em vez de "320.00", e a
+            # história com 0 Story Points aparece como "0 pts". Antes, Story Points 0 dava RICE
+            # 0.00, porque o Effort era o próprio Story Points.
+            for valor in ["História visível", "Story Points", "Should Have", "RICE", "Épico visível", "Sem épico", "320", "0 pts"]:
                 self.assertContains(response, valor)
             self.assertNotContains(response, "Somente no Sprint")
             self.assertNotContains(response, "História privada")
@@ -462,9 +472,13 @@ class ProjetoTests(TestCase):
         self.assertEqual(historia.product_backlog_id, self.backlog.pk)
 
 
+# Migrações 0004/0005: dados antigos (história sem backlog, vínculos entre projetos) são
+# tratados sem perder registros
 class MigracaoIntegridadeTests(TransactionTestCase):
     antiga = ("core", "0003_alter_projeto_dono")
-    atual = ("core", "0005_integridade_vinculos_historias")
+    # ALTERADO: de 0005 para 0006. Os testes usam o model atual (que tem o campo effort)
+    # depois de migrar, então o banco precisa chegar na última migration.
+    atual = ("core", "0006_historia_rice_epico")
 
     def setUp(self):
         from django.db.migrations.executor import MigrationExecutor
@@ -541,3 +555,165 @@ class MigracaoIntegridadeTests(TransactionTestCase):
             self.assertTrue(self.ProjetoAntigo.objects.filter(pk=outro.pk).exists())
         finally:
             historia.delete()
+
+
+# ======================================================================
+# ADICIONADO: testes de Story Points, MoSCoW e RICE (HU18-HU21; requisitos 14-19) e do CRUD
+# de histórias (HU12-HU14), de épicos (HU15-HU16) e do vínculo entre eles (HU17).
+# ======================================================================
+class PriorizacaoTests(TestCase):
+    def setUp(self):
+        dono = User.objects.create_user("dono_rice", email="dono_rice@exemplo.com", password="Senha-forte-123")
+        projeto = Projeto.objects.create(nome="Projeto A", dono=dono)
+        self.backlog = ProductBacklog.objects.create(projeto=projeto)
+
+    def nova(self, **campos):
+        dados = dict(titulo="Filtrar por épico", papel="analista", acao="filtrar histórias", beneficio="achar rápido")
+        dados.update(campos)
+        return HistoriaUsuario.objects.create(product_backlog=self.backlog, **dados)
+
+    def test_hu21_exemplo(self):
+        h = self.nova(reach=500, impact=2.0, confidence=80, effort=5)
+        self.assertEqual(h.rice_score, 16000)
+        self.assertEqual(h.rice_display, "16000")
+
+    def test_hu20_effort_independente_dos_story_points(self):
+        h = self.nova(reach=500, impact=2.0, confidence=80, effort=5, story_points=13)
+        h.story_points = 8
+        h.save()
+        self.assertEqual(h.rice_score, 16000)
+
+    def test_hu20_rice_incompleto(self):
+        h = self.nova(reach=500, impact=2.0, confidence=80)
+        self.assertIsNone(h.rice_score)
+        self.assertEqual(h.rice_display, "RICE incompleto")
+
+    def test_hu21_effort_zero_nao_calculavel(self):
+        h = self.nova(reach=500, impact=2.0, confidence=80, effort=0)
+        self.assertIsNone(h.rice_score)
+        self.assertEqual(h.rice_display, "não calculável")
+
+    def test_hu21_recalcula_ao_mudar_campo(self):
+        h = self.nova(reach=500, impact=2.0, confidence=80, effort=5)
+        h.confidence = 50
+        h.save()
+        self.assertEqual(HistoriaUsuario.objects.get(pk=h.pk).rice_score, 10000)
+
+    def test_historia_nova_sem_estimativa_nem_etiqueta(self):
+        h = self.nova()
+        self.assertIsNone(h.story_points)
+        self.assertEqual(h.moscow, "")
+        self.assertEqual(h.story_points_display, "sem estimativa")
+
+    def test_hu18_hu19_hu20_valores_fora_da_escala_recusados_no_banco(self):
+        for campos in ({"story_points": 4}, {"story_points": 60}, {"moscow": "X"},
+                       {"confidence": 70}, {"impact": 4.0}, {"effort": 4}):
+            with self.subTest(campos=campos), self.assertRaises(IntegrityError), transaction.atomic():
+                self.nova(**campos)
+        self.assertEqual(HistoriaUsuario.objects.count(), 0)
+
+
+class HistoriaEpicoViewsTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", password="Senha-forte-123")
+        self.membro = User.objects.create_user("bia", email="bia@exemplo.com", password="Senha-forte-123")
+        self.estranho = User.objects.create_user("caio", email="caio@exemplo.com", password="Senha-forte-123")
+        self.projeto = Projeto.objects.create(nome="Projeto A", dono=self.dono)
+        self.projeto.membros.add(self.membro)
+        ProductBacklog.objects.create(projeto=self.projeto)
+        self.outro = Projeto.objects.create(nome="Projeto B", dono=self.estranho)
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def dados(self, **extra):
+        d = {"titulo": "Exportar PDF", "papel": "PO", "acao": "exportar o backlog", "beneficio": "compartilhar",
+             "story_points": "13", "moscow": "S", "reach": "500", "impact": "2.0", "confidence": "80", "effort": "5"}
+        d.update(extra)
+        return d
+
+    def test_exige_login(self):
+        self.client.logout()
+        resp = self.client.get(self.url("historia_lista"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn(reverse("login"), resp["Location"])
+
+    def test_hu12_criar_historia_nasce_no_product_backlog(self):
+        resp = self.client.post(self.url("historia_criar"), self.dados())
+        self.assertRedirects(resp, self.url("historia_lista"))
+        h = HistoriaUsuario.objects.get()
+        self.assertEqual(h.product_backlog.projeto, self.projeto)
+        self.assertEqual(h.rice_score, 16000)
+        self.assertContains(self.client.get(self.url("product_backlog")), "Exportar PDF")
+
+    def test_hu12_sem_product_backlog_pede_para_criar(self):
+        ProductBacklog.objects.filter(projeto=self.projeto).delete()
+        resp = self.client.get(self.url("historia_criar"))
+        self.assertRedirects(resp, reverse("criar_product_backlog", args=[self.projeto.pk]))
+
+    def test_hu12_campos_obrigatorios(self):
+        resp = self.client.post(self.url("historia_criar"), self.dados(titulo="", papel=""))
+        self.assertContains(resp, "O título é obrigatório.")
+        self.assertEqual(HistoriaUsuario.objects.count(), 0)
+
+    def test_hu18_hu20_fora_da_escala_no_formulario(self):
+        for campo, valor, msg in (("story_points", "4", "Story Points aceita apenas"), ("effort", "4", "Effort aceita apenas")):
+            resp = self.client.post(self.url("historia_criar"), self.dados(**{campo: valor}))
+            self.assertContains(resp, msg)
+        self.assertEqual(HistoriaUsuario.objects.count(), 0)
+
+    def test_hu13_hu14_editar_e_excluir_historia(self):
+        self.client.post(self.url("historia_criar"), self.dados())
+        h = HistoriaUsuario.objects.get()
+        self.client.post(self.url("historia_editar", h.pk), self.dados(titulo="Exportar backlog", effort="0"))
+        h.refresh_from_db()
+        self.assertEqual(h.titulo, "Exportar backlog")
+        self.assertEqual(h.rice_display, "não calculável")
+        self.client.get(self.url("historia_excluir", h.pk))  # tela de confirmação não apaga
+        self.assertTrue(HistoriaUsuario.objects.exists())
+        self.client.post(self.url("historia_excluir", h.pk))
+        self.assertFalse(HistoriaUsuario.objects.exists())
+
+    def test_hu15_hu16_hu17_crud_epico_e_vinculo(self):
+        self.client.post(self.url("epico_criar"), {"titulo": "Priorização", "descricao": "RICE e MoSCoW"})
+        epico = Epico.objects.get()
+        self.client.post(self.url("historia_criar"), self.dados(epico=str(epico.pk)))
+        h = HistoriaUsuario.objects.get()
+        self.assertEqual(h.epico, epico)
+        self.assertContains(self.client.get(self.url("epico_detalhe", epico.pk)), "Exportar PDF")
+        self.client.post(self.url("epico_editar", epico.pk), {"titulo": "Priorização RICE", "descricao": ""})
+        self.assertContains(self.client.get(self.url("historia_detalhe", h.pk)), "Priorização RICE")
+        self.client.post(self.url("historia_editar", h.pk), self.dados(epico=""))
+        h.refresh_from_db()
+        self.assertIsNone(h.epico)
+        self.client.post(self.url("historia_editar", h.pk), self.dados(epico=str(epico.pk)))
+        self.client.post(self.url("epico_excluir", epico.pk))
+        h.refresh_from_db()
+        self.assertIsNone(h.epico)
+        self.assertFalse(Epico.objects.exists())
+
+    def test_hu15_epico_sem_nome(self):
+        resp = self.client.post(self.url("epico_criar"), {"titulo": "", "descricao": ""})
+        self.assertContains(resp, "O nome do épico é obrigatório.")
+        self.assertFalse(Epico.objects.exists())
+
+    def test_hu17_nao_liga_epico_de_outro_projeto(self):
+        epico_outro = Epico.objects.create(projeto=self.outro, titulo="Outro")
+        resp = self.client.post(self.url("historia_criar"), self.dados(epico=str(epico_outro.pk)))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(HistoriaUsuario.objects.count(), 0)
+
+    def test_membro_opera_historias_e_epicos(self):
+        self.client.force_login(self.membro)
+        self.assertRedirects(self.client.post(self.url("historia_criar"), self.dados()), self.url("historia_lista"))
+        self.assertRedirects(self.client.post(self.url("epico_criar"), {"titulo": "Do membro"}), self.url("epico_lista"))
+
+    def test_estranho_nao_acessa_historias_nem_epicos(self):
+        self.client.post(self.url("historia_criar"), self.dados())
+        h = HistoriaUsuario.objects.get()
+        self.client.force_login(self.estranho)
+        for nome, args in (("historia_lista", ()), ("historia_detalhe", (h.pk,)), ("epico_lista", ())):
+            self.assertEqual(self.client.get(self.url(nome, *args)).status_code, 404)
+        self.assertEqual(self.client.post(self.url("historia_excluir", h.pk)).status_code, 404)
+        self.assertTrue(HistoriaUsuario.objects.exists())
