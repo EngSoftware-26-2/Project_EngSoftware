@@ -1,0 +1,7 @@
+<!DOCTYPE html>
+<html lang="pt-br"><head><meta charset="UTF-8"><title>{{ titulo }}</title></head>
+<body><h1>{{ titulo }}: {{ projeto.nome }}</h1><p>{{ aviso }}</p>
+{% if erro %}<p role="alert">{{ erro }}</p>{% endif %}
+<form method="post">{% csrf_token %}<button type="submit">Confirmar exclusão</button></form>
+<a href="{% url 'detalhe_projeto' projeto.pk %}">Cancelar</a>
+</body></html>

@@ -1,0 +1,29 @@
+
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Criar Projeto</title>
+</head>
+<body>
+
+    <h1>Criar Novo Projeto</h1>
+
+    <form method="post">
+        {% csrf_token %}
+
+        {{ form.as_p }}
+
+        <button type="submit">
+            Criar Projeto
+        </button>
+    </form>
+
+    <p>
+        <a href="{% url 'inicio' %}">
+            Voltar
+        </a>
+    </p>
+
+</body>
+</html>
