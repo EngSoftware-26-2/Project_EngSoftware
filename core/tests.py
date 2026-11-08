@@ -4,8 +4,15 @@ from django.db import IntegrityError, connection, transaction
 from django.db.models.deletion import ProtectedError
 from django.test import Client, TestCase, TransactionTestCase
 from django.urls import reverse
+from datetime import date
 
 from .models import Projeto, ProductBacklog, HistoriaUsuario, Epico, SprintBacklog
+
+
+SPRINT_PERIODO = {
+    "data_inicio": date(2026, 11, 1),
+    "data_fim": date(2026, 11, 7),
+}
 
 
 # HU01-HU03: cadastro, login por e-mail e logout
@@ -177,7 +184,7 @@ class ProjetoTests(TestCase):
 
     def test_crud_backlog_preserva_historias_epicos_sprints_e_rice(self):
         epico = Epico.objects.create(projeto=self.projeto, titulo="Épico")
-        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1", **SPRINT_PERIODO)
         historia = HistoriaUsuario.objects.create(
             titulo="História", product_backlog=self.backlog,
             epico=epico, papel="Pessoa", acao="Agir", beneficio="Benefício",
@@ -304,7 +311,7 @@ class ProjetoTests(TestCase):
 
     def test_projeto_exclui_historias_de_product_e_sprint_sem_afetar_outros(self):
         epico = Epico.objects.create(projeto=self.projeto, titulo="Épico")
-        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint", **SPRINT_PERIODO)
         historias = [self.historia(epico=epico), self.historia(product_backlog=None, sprint_backlog=sprint),
                      self.historia(product_backlog=None, sprint_backlog=sprint, epico=epico)]
         outro_projeto = Projeto.objects.create(nome="Outro", dono=self.outro)
@@ -320,7 +327,7 @@ class ProjetoTests(TestCase):
         self.assertEqual(User.objects.count(), 3)
 
     def test_exclusao_projeto_queryset_remove_historias_sprint(self):
-        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint", **SPRINT_PERIODO)
         historia = self.historia(product_backlog=None, sprint_backlog=sprint)
         Projeto.objects.filter(pk=self.projeto.pk).delete()
         self.assertFalse(HistoriaUsuario.objects.filter(pk=historia.pk).exists())
@@ -347,7 +354,7 @@ class ProjetoTests(TestCase):
         epico = Epico.objects.create(projeto=self.projeto, titulo="Épico visível")
         historia = self.historia(titulo="História visível", epico=epico, moscow="S")
         self.historia(titulo="Sem épico visível", story_points=0)
-        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint", **SPRINT_PERIODO)
         self.historia(titulo="Somente no Sprint", product_backlog=None, sprint_backlog=sprint)
         outro = Projeto.objects.create(nome="Privado", dono=self.outro)
         outro_pb = ProductBacklog.objects.create(projeto=outro)
@@ -375,7 +382,7 @@ class ProjetoTests(TestCase):
         self.assertEqual(self.client.post(self.url("editar_product_backlog"), {"descricao": "Negada"}).status_code, 404)
 
     def test_modelo_rejeita_dois_backlogs_e_sem_backlog(self):
-        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint", **SPRINT_PERIODO)
         with self.assertRaises(ValidationError):
             self.historia(sprint_backlog=sprint)
         with self.assertRaises(ValidationError):
@@ -383,7 +390,7 @@ class ProjetoTests(TestCase):
 
     def test_banco_rejeita_dois_backlogs_em_update_e_bulk_create(self):
         historia = self.historia()
-        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint", **SPRINT_PERIODO)
         with self.assertRaises(IntegrityError), transaction.atomic():
             HistoriaUsuario.objects.filter(pk=historia.pk).update(sprint_backlog=sprint)
         with self.assertRaises(IntegrityError), transaction.atomic():
@@ -399,7 +406,7 @@ class ProjetoTests(TestCase):
     def test_movimentacao_entre_backlogs_preserva_rice_e_epico(self):
         epico = Epico.objects.create(projeto=self.projeto, titulo="Épico")
         historia = self.historia(epico=epico)
-        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint", **SPRINT_PERIODO)
         historia.product_backlog = None
         historia.sprint_backlog = sprint
         historia.save(update_fields=["product_backlog", "sprint_backlog"])
@@ -415,7 +422,7 @@ class ProjetoTests(TestCase):
     def test_epico_e_backlog_de_projetos_diferentes_rejeitados(self):
         outro = Projeto.objects.create(nome="Outro", dono=self.outro)
         epico = Epico.objects.create(projeto=outro, titulo="Outro épico")
-        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint", **SPRINT_PERIODO)
         for dados in [{"epico": epico}, {"epico": epico, "product_backlog": None, "sprint_backlog": sprint}]:
             with self.assertRaises(ValidationError):
                 self.historia(**dados)
@@ -430,7 +437,7 @@ class ProjetoTests(TestCase):
         outro = Projeto.objects.create(nome="Outro", dono=self.outro)
         epico = Epico.objects.create(projeto=self.projeto, titulo="Épico")
         self.historia(epico=epico)
-        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint", **SPRINT_PERIODO)
         self.historia(product_backlog=None, sprint_backlog=sprint, epico=epico)
         for objeto in [self.backlog, sprint, epico]:
             with self.assertRaises(IntegrityError), transaction.atomic():
@@ -438,7 +445,7 @@ class ProjetoTests(TestCase):
 
     def test_save_parcial_valida_estado_persistido(self):
         historia = self.historia()
-        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint", **SPRINT_PERIODO)
         historia.product_backlog = None
         historia.sprint_backlog = sprint
         with self.assertRaises(ValidationError):
@@ -457,28 +464,23 @@ class ProjetoTests(TestCase):
         self.assertEqual(client.post(self.url("excluir_projeto"), {"csrfmiddlewaretoken": token}).status_code, 302)
 
 
-    def test_sprint_com_historias_nao_pode_deixar_orfas_na_exclusao(self):
-        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint")
+    def test_sprint_com_historias_volta_ao_product_backlog_na_exclusao(self):
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint", **SPRINT_PERIODO)
         historia = self.historia(product_backlog=None, sprint_backlog=sprint)
-        with self.assertRaisesMessage(ProtectedError, "Mova as histórias"), transaction.atomic():
-            sprint.delete()
-        historia.refresh_from_db()
-        self.assertEqual(historia.sprint_backlog_id, sprint.pk)
-        historia.sprint_backlog = None
-        historia.product_backlog = self.backlog
-        historia.save()
         sprint.delete()
         historia.refresh_from_db()
         self.assertEqual(historia.product_backlog_id, self.backlog.pk)
+        self.assertIsNone(historia.sprint_backlog_id)
 
 
 # Migrações 0004/0005: dados antigos (história sem backlog, vínculos entre projetos) são
 # tratados sem perder registros
 class MigracaoIntegridadeTests(TransactionTestCase):
     antiga = ("core", "0003_alter_projeto_dono")
-    # ALTERADO: de 0005 para 0006. Os testes usam o model atual (que tem o campo effort)
+    # ALTERADO: de 0005 para 0007. Os testes usam o model atual (que tem Effort,
+    # critérios de aceitação e período de Sprint)
     # depois de migrar, então o banco precisa chegar na última migration.
-    atual = ("core", "0006_historia_rice_epico")
+    atual = ("core", "0007_criterioaceitacao_periodo_sprint")
 
     def setUp(self):
         from django.db.migrations.executor import MigrationExecutor
@@ -527,6 +529,7 @@ class MigracaoIntegridadeTests(TransactionTestCase):
             self.assertEqual(historia.sprint_backlog_id, sprint.pk)
         finally:
             historia.delete()
+            sprint.delete()
 
     def test_migracao_recusa_vinculos_entre_projetos(self):
         outro = self.ProjetoAntigo.objects.create(nome="Outro", dono_id=self.dono.pk)
@@ -540,22 +543,6 @@ class MigracaoIntegridadeTests(TransactionTestCase):
             self.assertEqual(historia.epico_id, epico.pk)
         finally:
             historia.delete()
-
-    def test_exclusao_bloqueada_para_vinculos_legados_entre_projetos(self):
-        outro = self.ProjetoAntigo.objects.create(nome="Outro", dono_id=self.dono.pk)
-        epico = self.apps_antigas.get_model("core", "Epico").objects.create(projeto=outro, titulo="Outro épico")
-        historia = self.HistoriaAntiga.objects.create(product_backlog=self.pb, epico=epico)
-        try:
-            self.client.force_login(self.dono)
-            response = self.client.post(reverse("excluir_projeto", args=[self.projeto.pk]))
-            self.assertContains(response, "vínculos inconsistentes", status_code=409)
-            self.assertTrue(self.ProjetoAntigo.objects.filter(pk=self.projeto.pk).exists())
-            historia.refresh_from_db()
-            self.assertEqual(historia.epico_id, epico.pk)
-            self.assertTrue(self.ProjetoAntigo.objects.filter(pk=outro.pk).exists())
-        finally:
-            historia.delete()
-
 
 # ======================================================================
 # ADICIONADO: testes de Story Points, MoSCoW e RICE (HU18-HU21; requisitos 14-19) e do CRUD

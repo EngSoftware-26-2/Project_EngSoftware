@@ -40,6 +40,10 @@ INSTALLED_APPS = [
     'core',
 ]
 
+# Mantém as chaves primárias dos models do projeto coerentes com as migrações
+# existentes e evita que novas migrações tentem alterar IDs já criados.
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",

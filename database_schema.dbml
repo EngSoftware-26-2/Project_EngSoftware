@@ -1,0 +1,111 @@
+// Modelo físico para uso no dbdiagram.io
+// Cole este conteúdo no editor DBML, não o arquivo SQL.
+
+Table auth_user {
+  id integer [pk, increment]
+  password varchar(128) [not null, note: 'Armazenar somente o hash da senha']
+  last_login datetime
+  is_superuser boolean [not null]
+  username varchar(150) [not null, unique]
+  last_name varchar(150) [not null]
+  email varchar(254) [not null]
+  is_staff boolean [not null]
+  is_active boolean [not null]
+  date_joined datetime [not null]
+  first_name varchar(150) [not null]
+}
+
+Table core_projeto {
+  id integer [pk, increment]
+  nome varchar(200) [not null]
+  descricao text [not null]
+  criado_em datetime [not null]
+  dono_id integer [not null]
+}
+
+Table core_projeto_membros {
+  id integer [pk, increment]
+  projeto_id integer [not null]
+  user_id integer [not null]
+
+  indexes {
+    (projeto_id, user_id) [unique]
+  }
+}
+
+Table core_productbacklog {
+  id integer [pk, increment]
+  projeto_id integer [not null, unique]
+  descricao text [not null]
+}
+
+Table core_sprintbacklog {
+  id integer [pk, increment]
+  nome varchar(100) [not null]
+  projeto_id integer [not null]
+  data_inicio date [not null]
+  data_fim date [not null]
+}
+
+Table core_epico {
+  id integer [pk, increment]
+  titulo varchar(200) [not null]
+  projeto_id integer [not null]
+  descricao text [not null]
+}
+
+Table core_historiausuario {
+  id integer [pk, increment]
+  titulo varchar(200) [not null]
+  papel varchar(100) [not null]
+  acao varchar(255) [not null]
+  beneficio varchar(255) [not null]
+
+  // Campos legados, mantidos durante a transição para a tabela de critérios.
+  contexto text [not null]
+  evento varchar(255) [not null]
+  resultado text [not null]
+
+  story_points integer
+  moscow varchar(1) [not null]
+  reach integer
+  impact real
+  confidence integer
+  effort integer
+
+  epico_id integer
+  product_backlog_id integer
+  sprint_backlog_id integer
+}
+
+Table core_criterioaceitacao {
+  id integer [pk, increment]
+  dado text [not null]
+  quando varchar(255) [not null]
+  entao text [not null]
+  historia_usuario_id integer [not null]
+}
+
+// Dono do projeto: um usuário pode possuir vários projetos.
+Ref: auth_user.id < core_projeto.dono_id
+
+// Membros: relacionamento N:N entre usuários e projetos.
+Ref: auth_user.id < core_projeto_membros.user_id
+Ref: core_projeto.id < core_projeto_membros.projeto_id
+
+// Um projeto possui um único Product Backlog.
+Ref: core_projeto.id - core_productbacklog.projeto_id
+
+// Um projeto pode possuir várias Sprints e vários épicos.
+Ref: core_projeto.id < core_sprintbacklog.projeto_id
+Ref: core_projeto.id < core_epico.projeto_id
+
+// Uma história pode estar no Product Backlog ou em uma Sprint, mas não nos dois.
+Ref: core_productbacklog.id < core_historiausuario.product_backlog_id
+Ref: core_sprintbacklog.id < core_historiausuario.sprint_backlog_id
+
+// Um épico pode possuir várias histórias; cada história possui no máximo um épico.
+Ref: core_epico.id < core_historiausuario.epico_id
+
+// Uma história pode possuir vários critérios de aceitação.
+Ref: core_historiausuario.id < core_criterioaceitacao.historia_usuario_id

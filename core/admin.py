@@ -1,11 +1,12 @@
 from django.contrib import admin
-from .models import Projeto, ProductBacklog, SprintBacklog, Epico, HistoriaUsuario
+from .models import CriterioAceitacao, Projeto, ProductBacklog, SprintBacklog, Epico, HistoriaUsuario
 
 # Regista os modelos simples
 admin.site.register(Projeto)
 admin.site.register(ProductBacklog)
 admin.site.register(SprintBacklog)
 admin.site.register(Epico)
+admin.site.register(CriterioAceitacao)
 
 # Configura a vista da História de Utilizador para mostrar a pontuação RICE na lista
 @admin.register(HistoriaUsuario)

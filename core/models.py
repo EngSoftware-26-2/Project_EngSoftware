@@ -1,5 +1,5 @@
 from django.db import models
-from django.db.models import Q
+from django.db.models import F, Q
 from django.conf import settings
 from django.core.exceptions import ValidationError
 
@@ -46,6 +46,23 @@ class ProductBacklog(models.Model):
 class SprintBacklog(models.Model):
     projeto = models.ForeignKey(Projeto, on_delete=models.CASCADE, related_name='sprint_backlogs')
     nome = models.CharField(max_length=100, help_text="Ex: Sprint 1")
+    data_inicio = models.DateField("Data de início")
+    data_fim = models.DateField("Data de fim")
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(data_fim__gte=F("data_inicio")),
+                name="sprint_periodo_valido",
+            ),
+        ]
+
+    def clean(self):
+        super().clean()
+        if self.data_inicio is None or self.data_fim is None:
+            raise ValidationError("A Sprint Backlog deve informar as datas de início e fim.")
+        if self.data_fim < self.data_inicio:
+            raise ValidationError({"data_fim": "A data de fim não pode ser anterior à data de início."})
 
     def __str__(self):
         return f"{self.nome} ({self.projeto.nome})"
@@ -82,11 +99,9 @@ class HistoriaUsuario(models.Model):
     acao = models.CharField("Eu quero", max_length=255, help_text="Eu quero [ação]...")
     beneficio = models.CharField("Para", max_length=255, help_text="Para [benefício]...")
 
-    # Formato padrão de Critérios de Aceitação (Requisito 13)
-    # ALTERADO: os três campos passaram a ser opcionais (blank=True). Pela HU12, só título,
-    # papel, ação e benefício são obrigatórios para criar uma história; antes era impossível
-    # salvar uma história sem já escrever um critério. O CRUD de critérios (vários por
-    # história, RF12-RF13) é outra tarefa e não foi alterado aqui.
+    # Compatibilidade com dados legados. Novos critérios devem ser gravados em
+    # CriterioAceitacao, que permite vários critérios por história. Estes campos
+    # permanecerão durante a transição para que registros antigos não sejam perdidos.
     contexto = models.TextField("Dado", blank=True, help_text="Dado [contexto inicial]...")
     evento = models.CharField("Quando", max_length=255, blank=True, help_text="Quando [evento]...")
     resultado = models.TextField("Então", blank=True, help_text="Então [resultado]...")
@@ -238,3 +253,22 @@ class HistoriaUsuario(models.Model):
 
     def __str__(self):
         return f"{self.titulo} (RICE: {self.rice_display})"
+
+
+class CriterioAceitacao(models.Model):
+    """Critério Dado/Quando/Então pertencente a uma história de usuário."""
+
+    historia_usuario = models.ForeignKey(
+        HistoriaUsuario,
+        on_delete=models.CASCADE,
+        related_name="criterios_aceitacao",
+    )
+    dado = models.TextField("Dado")
+    quando = models.CharField("Quando", max_length=255)
+    entao = models.TextField("Então")
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"Critério de aceitação da história {self.historia_usuario_id}"

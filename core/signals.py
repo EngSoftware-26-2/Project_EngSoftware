@@ -32,18 +32,23 @@ def proteger_product_backlog(sender, instance, using, origin, **kwargs):
         )
 
 
-# HU10 - Um Sprint Backlog com histórias não pode ser excluído; as histórias precisam ser
-# movidas antes (requisito 8). Ao excluir o projeto inteiro, a regra não se aplica.
+# HU10 - Ao excluir um Sprint Backlog, suas histórias retornam ao Product Backlog.
+# Ao excluir o projeto inteiro, a cascata do projeto continua sendo aplicada.
 @receiver(pre_delete, sender=SprintBacklog)
-def proteger_historias_do_sprint(sender, instance, using, origin, **kwargs):
+def devolver_historias_ao_product_backlog(sender, instance, using, origin, **kwargs):
     if isinstance(origin, Projeto) or getattr(origin, "model", None) is Projeto:
         return
-    historias = instance.historias.using(using).all()
-    if historias.exists():
+    backlog = ProductBacklog.objects.using(using).filter(
+        projeto_id=instance.projeto_id,
+    ).first()
+    historias = HistoriaUsuario.objects.using(using).filter(sprint_backlog=instance)
+    if historias.exists() and backlog is None:
         raise ProtectedError(
-            "Mova as histórias para outro backlog antes de excluir este Sprint Backlog.",
+            "Não é possível excluir a Sprint porque o projeto não possui Product Backlog.",
             historias,
         )
+    if backlog is not None:
+        historias.update(product_backlog_id=backlog.pk, sprint_backlog_id=None)
 
 
 # HU07 - Ao excluir o projeto, apaga também as histórias que estão só em Sprint Backlogs
