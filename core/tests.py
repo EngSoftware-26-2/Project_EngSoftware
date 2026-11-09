@@ -789,3 +789,83 @@ class CriterioAceitacaoTests(TestCase):
             titulo="Outra", product_backlog=self.historia.product_backlog, papel="a", acao="b", beneficio="c")
         c = CriterioAceitacao.objects.create(historia_usuario=outra, **self.criterio())
         self.assertEqual(self.client.get(self.url("criterio_editar", c.pk)).status_code, 404)
+
+
+# ======================================================================
+# ADICIONADO: testes do CRUD de Sprint Backlogs (requisito 6; HU09 e HU10).
+# ======================================================================
+class SprintBacklogViewsTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("gil", email="gil@exemplo.com", password="Senha-forte-123")
+        self.membro = User.objects.create_user("hel", email="hel@exemplo.com", password="Senha-forte-123")
+        self.estranho = User.objects.create_user("ivo", email="ivo@exemplo.com", password="Senha-forte-123")
+        self.projeto = Projeto.objects.create(nome="Projeto S", dono=self.dono)
+        self.projeto.membros.add(self.membro)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def dados(self, **extra):
+        d = {"nome": "Sprint 1", "data_inicio": "2026-11-09", "data_fim": "2026-11-20"}
+        d.update(extra)
+        return d
+
+    def test_hu09_criar_sprint_vazio(self):
+        resp = self.client.post(self.url("sprint_criar"), self.dados())
+        sprint = SprintBacklog.objects.get()
+        self.assertRedirects(resp, self.url("sprint_detalhe", sprint.pk))
+        self.assertEqual(sprint.projeto, self.projeto)
+        self.assertEqual(sprint.historias.count(), 0)
+        self.assertContains(self.client.get(self.url("sprint_lista")), "Sprint 1")
+
+    def test_hu09_data_fim_antes_do_inicio(self):
+        resp = self.client.post(self.url("sprint_criar"), self.dados(data_fim="2026-11-01"))
+        self.assertContains(resp, "A data de fim não pode ser anterior à data de início.")
+        self.assertFalse(SprintBacklog.objects.exists())
+
+    def test_hu09_campos_obrigatorios(self):
+        resp = self.client.post(self.url("sprint_criar"), {"nome": "", "data_inicio": "", "data_fim": ""})
+        self.assertContains(resp, "O nome do Sprint Backlog é obrigatório.")
+        self.assertContains(resp, "Informe a data de início.")
+        self.assertFalse(SprintBacklog.objects.exists())
+
+    def test_hu09_varios_sprints_no_mesmo_projeto(self):
+        self.client.post(self.url("sprint_criar"), self.dados())
+        self.client.post(self.url("sprint_criar"), self.dados(nome="Sprint 2", data_inicio="2026-11-23", data_fim="2026-12-04"))
+        self.assertEqual(self.projeto.sprint_backlogs.count(), 2)
+
+    def test_hu10_editar_sprint(self):
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, **SPRINT_PERIODO, nome="Sprint 1")
+        self.client.post(self.url("sprint_editar", sprint.pk), self.dados(nome="Sprint Um", data_fim="2026-11-27"))
+        sprint.refresh_from_db()
+        self.assertEqual(sprint.nome, "Sprint Um")
+        self.assertEqual(str(sprint.data_fim), "2026-11-27")
+
+    def test_hu10_excluir_sprint_devolve_historias_ao_product_backlog(self):
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1", **SPRINT_PERIODO)
+        h = HistoriaUsuario.objects.create(titulo="No sprint", sprint_backlog=sprint, papel="a", acao="b", beneficio="c")
+        self.client.get(self.url("sprint_excluir", sprint.pk))  # tela de confirmação não apaga
+        self.assertTrue(SprintBacklog.objects.filter(pk=sprint.pk).exists())
+        self.assertRedirects(self.client.post(self.url("sprint_excluir", sprint.pk)), self.url("sprint_lista"))
+        h.refresh_from_db()
+        self.assertFalse(SprintBacklog.objects.exists())
+        self.assertEqual(h.product_backlog, self.backlog)
+        self.assertIsNone(h.sprint_backlog)
+
+    def test_detalhe_mostra_historias_e_total_de_pontos(self):
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1", **SPRINT_PERIODO)
+        HistoriaUsuario.objects.create(titulo="A", sprint_backlog=sprint, papel="a", acao="b", beneficio="c", story_points=5)
+        HistoriaUsuario.objects.create(titulo="B", sprint_backlog=sprint, papel="a", acao="b", beneficio="c", story_points=8)
+        resp = self.client.get(self.url("sprint_detalhe", sprint.pk))
+        self.assertContains(resp, "13 Story Points")
+
+    def test_membro_opera_e_estranho_nao_acessa(self):
+        self.client.force_login(self.membro)
+        self.client.post(self.url("sprint_criar"), self.dados())
+        sprint = SprintBacklog.objects.get()
+        self.client.force_login(self.estranho)
+        self.assertEqual(self.client.get(self.url("sprint_lista")).status_code, 404)
+        self.assertEqual(self.client.post(self.url("sprint_excluir", sprint.pk)).status_code, 404)
+        self.assertTrue(SprintBacklog.objects.exists())

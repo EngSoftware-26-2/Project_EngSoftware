@@ -1,0 +1,28 @@
+{% extends "core/base.html" %}
+{% comment %} ADICIONADO: detalhe do Sprint Backlog com as histórias que estão nele (HU09, HU10) {% endcomment %}
+{% block titulo %}{{ sprint.nome }} – {{ projeto.nome }}{% endblock %}
+{% block conteudo %}
+<h2>{{ sprint.nome }}</h2>
+<p>De {{ sprint.data_inicio|date:"d/m/Y" }} a {{ sprint.data_fim|date:"d/m/Y" }} · {{ historias|length }} histórias · {{ total_pontos }} Story Points</p>
+{% if historias %}
+<table>
+  <tr><th>Título</th><th>Story Points</th><th>MoSCoW</th><th>RICE</th><th>Épico</th></tr>
+  {% for h in historias %}
+  <tr>
+    <td><a href="{% url 'historia_detalhe' projeto.id h.id %}">{{ h.titulo }}</a></td>
+    <td>{{ h.story_points_display }}</td>
+    <td>{{ h.moscow|default:"—" }}</td>
+    <td>{{ h.rice_display }}</td>
+    <td>{{ h.epico|default:"Sem épico" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="vazio">Este Sprint Backlog ainda está vazio.</p>
+{% endif %}
+<p>
+  <a class="botao" href="{% url 'sprint_editar' projeto.id sprint.id %}">Editar</a>
+  <a class="botao perigo" href="{% url 'sprint_excluir' projeto.id sprint.id %}">Excluir</a>
+  <a class="botao secundario" href="{% url 'sprint_lista' projeto.id %}">Voltar</a>
+</p>
+{% endblock %}

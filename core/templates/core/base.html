@@ -31,6 +31,7 @@
       <a href="{% url 'inicio' %}">Meus projetos</a>
       <a href="{% url 'detalhe_projeto' projeto.id %}">Projeto</a>
       {% if projeto.product_backlog %}<a href="{% url 'product_backlog' projeto.id %}">Product Backlog</a>{% endif %}
+      <a href="{% url 'sprint_lista' projeto.id %}">Sprints</a>
       <a href="{% url 'historia_lista' projeto.id %}">Histórias</a>
       <a href="{% url 'epico_lista' projeto.id %}">Épicos</a>
     </nav>

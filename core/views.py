@@ -12,11 +12,11 @@ from django.db import transaction
 from django.db.models import Q
 from django.db.models.deletion import ProtectedError
 
-from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAceitacao
+from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAceitacao, SprintBacklog
 
 from .forms import (
     CadastroForm, LoginForm, ProjetoForm, AdicionarMembroForm, ProductBacklogForm,
-    EpicoForm, HistoriaUsuarioForm, CriterioAceitacaoForm,
+    EpicoForm, HistoriaUsuarioForm, CriterioAceitacaoForm, SprintBacklogForm,
 )
 
 # HU01 - Cadastro
@@ -568,3 +568,86 @@ def criterio_excluir(request, pk, historia_id, criterio_id):
         "projeto": projeto, "objeto": f"Dado {criterio.dado} quando {criterio.quando} então {criterio.entao}",
         "tipo": "o critério de aceitação", "voltar_url": voltar_url,
     })
+
+
+# ======================================================================
+# ADICIONADO: CRUD de Sprint Backlogs (requisito 6; HU09 e HU10). Um projeto pode ter
+# vários Sprint Backlogs, cada um com nome e período. Dono e membros do projeto podem
+# operar; quem não participa recebe 404.
+# ======================================================================
+def obter_sprint(projeto, sprint_id):
+    return get_object_or_404(SprintBacklog, pk=sprint_id, projeto=projeto)
+
+
+# HU09/HU10 - Lista dos Sprint Backlogs do projeto
+@login_required(login_url="login")
+def sprint_lista(request, pk):
+    projeto = projeto_acessivel(request.user, pk)
+    return render(request, "core/sprint_lista.html", {
+        "projeto": projeto,
+        "sprints": projeto.sprint_backlogs.prefetch_related("historias").order_by("data_inicio", "pk"),
+    })
+
+
+# HU09 - Criar Sprint Backlog com nome e período (nasce vazio)
+@login_required(login_url="login")
+def sprint_criar(request, pk):
+    projeto = projeto_acessivel(request.user, pk)
+    form = SprintBacklogForm(request.POST or None, instance=SprintBacklog(projeto=projeto))
+    if request.method == "POST" and form.is_valid():
+        sprint = form.save()
+        messages.success(request, "Sprint Backlog criado.")
+        return redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
+    return render(request, "core/sprint_form.html", {"projeto": projeto, "form": form, "acao": "Novo Sprint Backlog"})
+
+
+# HU09/HU10 - Detalhe do Sprint Backlog, com as histórias que estão nele
+@login_required(login_url="login")
+def sprint_detalhe(request, pk, sprint_id):
+    projeto = projeto_acessivel(request.user, pk)
+    sprint = obter_sprint(projeto, sprint_id)
+    historias = sprint.historias.select_related("epico").order_by("titulo")
+    total_pontos = sum(h.story_points or 0 for h in historias)
+    return render(request, "core/sprint_detalhe.html", {
+        "projeto": projeto, "sprint": sprint, "historias": historias, "total_pontos": total_pontos,
+    })
+
+
+# HU10 - Editar nome e datas do Sprint Backlog
+@login_required(login_url="login")
+def sprint_editar(request, pk, sprint_id):
+    projeto = projeto_acessivel(request.user, pk)
+    sprint = obter_sprint(projeto, sprint_id)
+    form = SprintBacklogForm(request.POST or None, instance=sprint)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Sprint Backlog atualizado.")
+        return redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
+    return render(request, "core/sprint_form.html", {
+        "projeto": projeto, "form": form, "acao": "Editar Sprint Backlog", "sprint": sprint,
+    })
+
+
+# HU10 - Excluir Sprint Backlog, com confirmação. As histórias não são apagadas: voltam para
+# o Product Backlog (regra em signals.py, feita pelo Leandro).
+@login_required(login_url="login")
+def sprint_excluir(request, pk, sprint_id):
+    projeto = projeto_acessivel(request.user, pk)
+    sprint = obter_sprint(projeto, sprint_id)
+    voltar_url = reverse("sprint_detalhe", args=[projeto.pk, sprint.pk])
+    erro = None
+    if request.method == "POST":
+        try:
+            with transaction.atomic():
+                sprint.delete()
+        except ProtectedError as e:
+            # Acontece quando o Sprint tem histórias e o projeto está sem Product Backlog.
+            erro = e.args[0]
+        else:
+            messages.success(request, "Sprint Backlog excluído. As histórias dele voltaram para o Product Backlog.")
+            return redirect("sprint_lista", pk=projeto.pk)
+    return render(request, "core/confirmar_exclusao_item.html", {
+        "projeto": projeto, "objeto": sprint, "tipo": "o Sprint Backlog",
+        "aviso": "As histórias deste Sprint não serão apagadas: elas voltam para o Product Backlog.",
+        "erro": erro, "voltar_url": voltar_url,
+    }, status=409 if erro else 200)

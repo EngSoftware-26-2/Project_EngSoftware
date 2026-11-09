@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db.models import Q
-from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAceitacao
+from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAceitacao, SprintBacklog
 
 # HU01 - Formulário de cadastro: o e-mail é usado como login (username) e não pode repetir;
 # a senha passa pelos validadores de senha do Django.
@@ -227,3 +227,28 @@ class CriterioAceitacaoForm(forms.ModelForm):
             'quando': {'required': 'Preencha o Quando (ação ou evento).'},
             'entao': {'required': 'Preencha o Então (resultado esperado).'},
         }
+
+
+# ADICIONADO: (Requisito 6; HU09 e HU10) formulário para criar e editar um Sprint Backlog,
+# com nome e período. A regra "data de fim não pode ser antes da de início" já está no
+# model (clean e restrição no banco, Artefato 7) e aparece como erro no formulário.
+class SprintBacklogForm(forms.ModelForm):
+    class Meta:
+        model = SprintBacklog
+        fields = ['nome', 'data_inicio', 'data_fim']
+        widgets = {
+            'data_inicio': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'data_fim': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+        }
+        error_messages = {
+            'nome': {'required': 'O nome do Sprint Backlog é obrigatório.'},
+            'data_inicio': {'required': 'Informe a data de início.', 'invalid': 'Informe uma data válida.'},
+            'data_fim': {'required': 'Informe a data de fim.', 'invalid': 'Informe uma data válida.'},
+        }
+
+    def _post_clean(self):
+        # Se alguma data faltou, o erro do próprio campo já avisa; evita repetir a mensagem
+        # genérica do model ("deve informar as datas de início e fim").
+        if self.errors.get('data_inicio') or self.errors.get('data_fim'):
+            return
+        super()._post_clean()
