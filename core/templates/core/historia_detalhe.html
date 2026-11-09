@@ -3,10 +3,28 @@
 {% block conteudo %}
 <h2>{{ historia.titulo }}</h2>
 <p><strong>Como um</strong> {{ historia.papel }}, <strong>eu quero</strong> {{ historia.acao }} <strong>para</strong> {{ historia.beneficio }}.</p>
-{% if historia.contexto or historia.evento or historia.resultado %}
-<h3>Critério de aceitação</h3>
-<p><strong>Dado</strong> {{ historia.contexto }} <strong>quando</strong> {{ historia.evento }} <strong>então</strong> {{ historia.resultado }}.</p>
+{% comment %} ALTERADO: em vez de um único critério (campos legados da história), a página
+   lista todos os critérios de aceitação, com opções de adicionar, editar e excluir
+   (requisito 12). {% endcomment %}
+<h3>Critérios de aceitação</h3>
+{% if criterios %}
+<table>
+  <tr><th>#</th><th>Dado</th><th>Quando</th><th>Então</th><th></th></tr>
+  {% for c in criterios %}
+  <tr>
+    <td>{{ forloop.counter }}</td>
+    <td>{{ c.dado }}</td>
+    <td>{{ c.quando }}</td>
+    <td>{{ c.entao }}</td>
+    <td><a href="{% url 'criterio_editar' projeto.id historia.id c.id %}">Editar</a> · <a href="{% url 'criterio_excluir' projeto.id historia.id c.id %}">Excluir</a></td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="vazio">Esta história ainda não tem critérios de aceitação.</p>
 {% endif %}
+<p><a class="botao" href="{% url 'criterio_criar' projeto.id historia.id %}">Adicionar critério</a></p>
+<h3>Priorização</h3>
 <table>
   <tr><th>Épico</th><td>{% if historia.epico %}<a href="{% url 'epico_detalhe' projeto.id historia.epico.id %}">{{ historia.epico }}</a>{% else %}Sem épico{% endif %}</td></tr>
   <tr><th>Story Points</th><td>{{ historia.story_points_display }}</td></tr>
