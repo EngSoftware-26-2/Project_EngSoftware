@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db.models import Q
-from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario
+from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAceitacao
 
 # HU01 - Formulário de cadastro: o e-mail é usado como login (username) e não pode repetir;
 # a senha passa pelos validadores de senha do Django.
@@ -150,15 +150,14 @@ class HistoriaUsuarioForm(forms.ModelForm):
         model = HistoriaUsuario
         fields = [
             'titulo', 'papel', 'acao', 'beneficio',
-            'contexto', 'evento', 'resultado',
+            # ALTERADO: contexto, evento e resultado saíram do formulário. Eles viraram campos
+            # legados (Artefato 7, migration 0007); os critérios agora são gravados no model
+            # CriterioAceitacao. Na criação da história o primeiro critério continua podendo
+            # ser escrito (campos extras abaixo).
             'epico',
             'story_points', 'moscow',
             'reach', 'impact', 'confidence', 'effort',
         ]
-        widgets = {
-            'contexto': forms.Textarea(attrs={'rows': 2}),
-            'resultado': forms.Textarea(attrs={'rows': 2}),
-        }
         error_messages = {
             'titulo': {'required': 'O título é obrigatório.'},
             'papel': {'required': 'Informe o papel (Como um...).'},
@@ -183,3 +182,48 @@ class HistoriaUsuarioForm(forms.ModelForm):
         self.fields['impact'].choices = [('', '---------')] + HistoriaUsuario.IMPACT_CHOICES
         self.fields['confidence'].choices = [('', '---------')] + HistoriaUsuario.CONFIDENCE_CHOICES
         self.fields['effort'].choices = [('', '---------')] + HistoriaUsuario.STORY_POINTS_CHOICES
+        # ADICIONADO: na criação da história (HU12, critério 3), o usuário pode já escrever o
+        # primeiro critério de aceitação. Os outros são adicionados depois, no detalhe da
+        # história. Na edição esses campos não aparecem: os critérios têm CRUD próprio.
+        if self.instance.pk is None:
+            self.fields['criterio_dado'] = forms.CharField(label='Dado', required=False, widget=forms.Textarea(attrs={'rows': 2}))
+            self.fields['criterio_quando'] = forms.CharField(label='Quando', required=False, max_length=255)
+            self.fields['criterio_entao'] = forms.CharField(label='Então', required=False, widget=forms.Textarea(attrs={'rows': 2}))
+
+    def clean(self):
+        dados = super().clean()
+        # O primeiro critério é opcional, mas se for escrito precisa estar completo (requisito 13).
+        partes = [dados.get(c, '').strip() for c in ('criterio_dado', 'criterio_quando', 'criterio_entao')]
+        if any(partes) and not all(partes):
+            raise forms.ValidationError('Para adicionar o critério, preencha Dado, Quando e Então.')
+        return dados
+
+    def save(self, commit=True):
+        historia = super().save(commit=commit)
+        if commit and 'criterio_dado' in self.fields:
+            dado = self.cleaned_data.get('criterio_dado', '').strip()
+            if dado:
+                CriterioAceitacao.objects.create(
+                    historia_usuario=historia,
+                    dado=dado,
+                    quando=self.cleaned_data['criterio_quando'].strip(),
+                    entao=self.cleaned_data['criterio_entao'].strip(),
+                )
+        return historia
+
+
+# ADICIONADO: (Requisitos 12 e 13) formulário para criar e editar um critério de aceitação,
+# usando o model CriterioAceitacao definido no Artefato 7 (campos dado, quando, entao).
+class CriterioAceitacaoForm(forms.ModelForm):
+    class Meta:
+        model = CriterioAceitacao
+        fields = ['dado', 'quando', 'entao']
+        widgets = {
+            'dado': forms.Textarea(attrs={'rows': 2}),
+            'entao': forms.Textarea(attrs={'rows': 2}),
+        }
+        error_messages = {
+            'dado': {'required': 'Preencha o Dado (contexto inicial).'},
+            'quando': {'required': 'Preencha o Quando (ação ou evento).'},
+            'entao': {'required': 'Preencha o Então (resultado esperado).'},
+        }
