@@ -160,7 +160,7 @@ def membros_projeto(request, pk):
         usuario = contas[0] if len(contas) == 1 else None
 
         if usuario is None:
-            # ALTERADO: quando não existe conta com o e-mail, a mensagem agora é a do
+            # Quando não existe conta com o e-mail, a mensagem agora é a do
             # Artefato 4 (HU22, critério 2). A mensagem antiga continua para o caso raro de
             # haver mais de uma conta com o mesmo e-mail.
             form.add_error(

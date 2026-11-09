@@ -474,7 +474,7 @@ class ProjetoTests(TestCase):
 
 
 # ======================================================================
-# ADICIONADO: testes dos ajustes nas telas de membros e de detalhe do projeto (HU22, HU24).
+# Testes dos ajustes nas telas de membros e de detalhe do projeto (HU22, HU24).
 # ======================================================================
 class AjustesMembrosTests(TestCase):
     def setUp(self):
