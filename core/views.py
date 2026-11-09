@@ -365,7 +365,7 @@ def excluir_product_backlog(request, pk):
 
 
 # ======================================================================
-# ADICIONADO: CRUD de histórias de usuário (HU12, HU13, HU14; requisitos 7 e 9), CRUD de
+# CRUD de histórias de usuário (HU12, HU13, HU14; requisitos 7 e 9), CRUD de
 # épicos (HU15, HU16; requisito 10) e vinculação história-épico (HU17; requisito 11).
 # O acesso usa projeto_acessivel(): dono e membros do projeto podem operar histórias e
 # épicos; quem não participa recebe 404.
@@ -416,7 +416,7 @@ def historia_criar(request, pk):
 def historia_detalhe(request, pk, historia_id):
     projeto = projeto_acessivel(request.user, pk)
     historia = obter_historia(projeto, historia_id)
-    # ALTERADO: a página também lista os critérios de aceitação da história (requisito 12)
+    # A página também lista os critérios de aceitação da história (requisito 12)
     # e, desde a HU11, traz o formulário para mover a história de backlog (requisito 8).
     return render(request, "core/historia_detalhe.html", {
         "projeto": projeto, "historia": historia, "criterios": historia.criterios_aceitacao.all(),
@@ -516,7 +516,7 @@ def epico_excluir(request, pk, epico_id):
 
 
 # ======================================================================
-# ADICIONADO: CRUD de critérios de aceitação (requisitos 12 e 13; HU12 critério 3 e HU13),
+# CRUD de critérios de aceitação (requisitos 12 e 13; HU12 critério 3 e HU13),
 # usando o model CriterioAceitacao do Artefato 7. Os critérios ficam dentro da história:
 # a leitura é na página de detalhe dela, e criar, editar e excluir voltam para lá.
 # Dono e membros do projeto podem operar; quem não participa recebe 404.
@@ -574,7 +574,7 @@ def criterio_excluir(request, pk, historia_id, criterio_id):
 
 
 # ======================================================================
-# ADICIONADO: CRUD de Sprint Backlogs (requisito 6; HU09 e HU10). Um projeto pode ter
+# CRUD de Sprint Backlogs (requisito 6; HU09 e HU10). Um projeto pode ter
 # vários Sprint Backlogs, cada um com nome e período. Dono e membros do projeto podem
 # operar; quem não participa recebe 404.
 # ======================================================================
@@ -657,7 +657,7 @@ def sprint_excluir(request, pk, sprint_id):
 
 
 # ======================================================================
-# ADICIONADO: mover história entre backlogs (requisito 8; HU11). A história pode ir do
+# Mover história entre backlogs (requisito 8; HU11). A história pode ir do
 # Product Backlog para um Sprint, voltar de um Sprint para o Product Backlog ou passar de
 # um Sprint para outro, sempre dentro do mesmo projeto.
 # ======================================================================

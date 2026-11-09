@@ -20,25 +20,25 @@ urlpatterns = [
     path("projetos/<int:pk>/backlog/criar/", views.criar_product_backlog, name="criar_product_backlog"),
     path("projetos/<int:pk>/backlog/editar/", views.editar_product_backlog, name="editar_product_backlog"),
     path("projetos/<int:pk>/backlog/excluir/", views.excluir_product_backlog, name="excluir_product_backlog"),
-    # ADICIONADO: histórias de usuário (HU12, HU13, HU14)
+    # Histórias de usuário (HU12, HU13, HU14)
     path("projetos/<int:pk>/historias/", views.historia_lista, name="historia_lista"),
     path("projetos/<int:pk>/historias/nova/", views.historia_criar, name="historia_criar"),
     path("projetos/<int:pk>/historias/<int:historia_id>/", views.historia_detalhe, name="historia_detalhe"),
     path("projetos/<int:pk>/historias/<int:historia_id>/editar/", views.historia_editar, name="historia_editar"),
     path("projetos/<int:pk>/historias/<int:historia_id>/excluir/", views.historia_excluir, name="historia_excluir"),
-    # ADICIONADO: mover história entre backlogs (requisito 8; HU11)
+    # Mover história entre backlogs (requisito 8; HU11)
     path("projetos/<int:pk>/historias/<int:historia_id>/mover/", views.historia_mover, name="historia_mover"),
-    # ADICIONADO: critérios de aceitação de uma história (requisitos 12 e 13)
+    # Critérios de aceitação de uma história (requisitos 12 e 13)
     path("projetos/<int:pk>/historias/<int:historia_id>/criterios/novo/", views.criterio_criar, name="criterio_criar"),
     path("projetos/<int:pk>/historias/<int:historia_id>/criterios/<int:criterio_id>/editar/", views.criterio_editar, name="criterio_editar"),
     path("projetos/<int:pk>/historias/<int:historia_id>/criterios/<int:criterio_id>/excluir/", views.criterio_excluir, name="criterio_excluir"),
-    # ADICIONADO: Sprint Backlogs (requisito 6; HU09, HU10)
+    # Sprint Backlogs (requisito 6; HU09, HU10)
     path("projetos/<int:pk>/sprints/", views.sprint_lista, name="sprint_lista"),
     path("projetos/<int:pk>/sprints/novo/", views.sprint_criar, name="sprint_criar"),
     path("projetos/<int:pk>/sprints/<int:sprint_id>/", views.sprint_detalhe, name="sprint_detalhe"),
     path("projetos/<int:pk>/sprints/<int:sprint_id>/editar/", views.sprint_editar, name="sprint_editar"),
     path("projetos/<int:pk>/sprints/<int:sprint_id>/excluir/", views.sprint_excluir, name="sprint_excluir"),
-    # ADICIONADO: épicos (HU15, HU16) e histórias ligadas a cada um (HU17)
+    # Épicos (HU15, HU16) e histórias ligadas a cada um (HU17)
     path("projetos/<int:pk>/epicos/", views.epico_lista, name="epico_lista"),
     path("projetos/<int:pk>/epicos/novo/", views.epico_criar, name="epico_criar"),
     path("projetos/<int:pk>/epicos/<int:epico_id>/", views.epico_detalhe, name="epico_detalhe"),

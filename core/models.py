@@ -70,11 +70,11 @@ class SprintBacklog(models.Model):
 # (Requisito 10) CRUD de Épicos
 class Epico(models.Model):
     projeto = models.ForeignKey(Projeto, on_delete=models.CASCADE, related_name='epicos')
-    # ALTERADO: adicionado verbose_name "Nome". O Artefato 4 (HU15/HU16) chama esse campo de
+    # O verbose_name "Nome" foi adicionado. O Artefato 4 (HU15/HU16) chama esse campo de
     # "nome" do épico; o nome da coluna (titulo) foi mantido para não quebrar o banco nem o
     # código de outros membros, só o rótulo exibido nas telas mudou.
     titulo = models.CharField("Nome", max_length=200)
-    # ADICIONADO: descrição opcional. A HU15 pede épicos "com nome e descrição".
+    # Descrição opcional. A HU15 pede épicos "com nome e descrição".
     descricao = models.TextField("Descrição", blank=True)
 
     class Meta:
@@ -109,24 +109,24 @@ class HistoriaUsuario(models.Model):
     # Story Points (Requisito 14 e 15)
     STORY_POINTS_CHOICES = [(0, '0'), (1, '1'), (2, '2'), (3, '3'), (5, '5'), (8, '8'), (13, '13'), (21, '21'), (34, '34'), (55, '55')]
     STORY_POINTS_VALIDOS = [valor for valor, _ in STORY_POINTS_CHOICES]
-    # ALTERADO: de default=0 para null=True/blank=True. Zero é uma estimativa válida da escala,
+    # De default=0 para null=True/blank=True. Zero é uma estimativa válida da escala,
     # então usar 0 como padrão fazia toda história nova parecer "estimada em 0 pontos" sem
     # ninguém ter estimado. Agora "sem estimativa" (vazio) é diferente de "0 pts".
     story_points = models.IntegerField("Story Points", choices=STORY_POINTS_CHOICES, null=True, blank=True)
 
     # MoSCoW (Requisito 16)
     MOSCOW_CHOICES = [('M', 'Must Have'), ('S', 'Should Have'), ('C', 'Could Have'), ('W', "Won't Have")]
-    # ALTERADO: de default='M' para blank=True com padrão vazio. Com 'M' como padrão, toda
+    # De default='M' para blank=True com padrão vazio. Com 'M' como padrão, toda
     # história nova nascia como "Must", o que distorce a priorização e contradiz a HU19, em que
     # a etiqueta é escolhida pelo Product Owner.
     moscow = models.CharField("MoSCoW", max_length=1, choices=MOSCOW_CHOICES, blank=True, default='')
 
     # Critérios RICE (Requisito 17 e 18)
-    # ALTERADO: os quatro componentes do RICE passaram a ser opcionais (null=True/blank=True)
+    # Os quatro componentes do RICE passaram a ser opcionais (null=True/blank=True)
     # e sem valor padrão. Antes reach=0, impact=1 e confidence=80 eram preenchidos sozinhos,
     # então o RICE nunca ficava "incompleto" (HU20, critério 3) e o score podia aparecer
     # calculado com valores que o Product Owner nunca informou.
-    # ALTERADO: reach de IntegerField para PositiveIntegerField, porque alcance negativo
+    # O campo reach passou de IntegerField para PositiveIntegerField, porque alcance negativo
     # (número de usuários) não faz sentido e era aceito.
     reach = models.PositiveIntegerField("Reach", null=True, blank=True, help_text="Alcance (Número de usuários)")
     IMPACT_CHOICES = [(3.0, 'Massivo'), (2.0, 'Alto'), (1.0, 'Médio'), (0.5, 'Baixo'), (0.25, 'Mínimo')]
@@ -134,7 +134,7 @@ class HistoriaUsuario(models.Model):
     # Confidence entra na fórmula pelo valor literal (100, 80 ou 50), como define a Visão e Escopo.
     CONFIDENCE_CHOICES = [(100, 'Alta (100%)'), (80, 'Média (80%)'), (50, 'Baixa (50%)')]
     confidence = models.IntegerField("Confidence", choices=CONFIDENCE_CHOICES, null=True, blank=True)
-    # ADICIONADO: campo Effort próprio. Antes o código usava story_points como Effort
+    # Campo Effort próprio. Antes o código usava story_points como Effort
     # ("Esforço (Effort) é o próprio valor dos story_points"). O enunciado lista Effort entre
     # os critérios que o usuário atribui (requisito 17) e o Artefato 4 (HU20/HU21) trata Effort
     # como campo separado: mudar os Story Points não muda o Effort.
@@ -143,7 +143,7 @@ class HistoriaUsuario(models.Model):
     effort = models.IntegerField("Effort", choices=STORY_POINTS_CHOICES, null=True, blank=True, help_text="Esforço na escala de pontos de história")
 
     class Meta:
-        # ADICIONADO: restrições no banco. Os "choices" só limitam o formulário; um valor fora
+        # Restrições no banco. Os "choices" só limitam o formulário; um valor fora
         # da escala salvo por outro caminho (shell, script, outra view) entrava no banco.
         # A HU18 e a HU19 exigem que valores fora da escala sejam recusados e a história não
         # seja salva.
@@ -226,7 +226,6 @@ class HistoriaUsuario(models.Model):
     @property
     def rice_score(self):
         # Cálculo RICE: (R x I x C) / E (Requisito 19)
-        # ALTERADO:
         #  1. O divisor passou de story_points para effort (ver comentário do campo effort).
         #  2. Com algum campo vazio, devolve None ("RICE incompleto", HU20) em vez de calcular
         #     com valores padrão.

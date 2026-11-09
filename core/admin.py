@@ -14,12 +14,12 @@ class HistoriaUsuarioAdmin(admin.ModelAdmin):
     list_display = ('titulo', 'projeto_vinculado', 'epico', 'story_points', 'moscow', 'rice_score_display')
     
     def projeto_vinculado(self, obj):
-        # ALTERADO: usa a propriedade projeto do model, que também encontra histórias que
+        # Usa a propriedade projeto do model, que também encontra histórias que
         # estejam só num Sprint Backlog.
         return obj.projeto.nome if obj.projeto else "-"
     
     def rice_score_display(self, obj):
-        # ALTERADO: rice_score agora pode ser None (RICE incompleto ou Effort = 0), e
+        # O rice_score agora pode ser None (RICE incompleto ou Effort = 0), e
         # round(None) quebrava a listagem. rice_display já devolve o texto certo para cada caso.
         return obj.rice_display
     rice_score_display.short_description = 'Pontuação RICE'

@@ -8,8 +8,8 @@
 {% else %}
 <a href="{% url 'criar_product_backlog' projeto.pk %}">Criar Product Backlog</a>
 {% endif %}
-{# ADICIONADO: acesso às histórias (HU12-HU14) e aos épicos (HU15-HU17) do projeto #}
-{% comment %} ADICIONADO: acesso aos Sprint Backlogs (HU09, HU10) {% endcomment %}
+{# Acesso às histórias (HU12-HU14) e aos épicos (HU15-HU17) do projeto #}
+{% comment %} Acesso aos Sprint Backlogs (HU09, HU10) {% endcomment %}
 <a href="{% url 'sprint_lista' projeto.pk %}">Sprints</a>
 <a href="{% url 'historia_lista' projeto.pk %}">Histórias</a>
 <a href="{% url 'epico_lista' projeto.pk %}">Épicos</a>

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-br"><head><meta charset="UTF-8"><title>{{ titulo }}</title></head>
 <body><h1>{{ titulo }}</h1>
-{# ADICIONADO: mostra avisos, por exemplo "Crie o Product Backlog do projeto antes de criar histórias." #}
+{# Mostra avisos, por exemplo "Crie o Product Backlog do projeto antes de criar histórias." #}
 {% for m in messages %}<p role="alert">{{ m }}</p>{% endfor %}
 <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Salvar</button></form>
 <a href="{% url 'detalhe_projeto' projeto.pk %}">Voltar ao projeto</a>

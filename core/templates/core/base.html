@@ -1,4 +1,4 @@
-{# ADICIONADO: layout base das telas de histórias e épicos #}
+{# Layout base das telas de histórias e épicos #}
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -37,7 +37,7 @@
       <a href="{% url 'epico_lista' projeto.id %}">Épicos</a>
     </nav>
   </header>
-  {% comment %} ALTERADO: mensagens de erro (ex.: ao mover história) aparecem em vermelho {% endcomment %}
+  {% comment %} Mensagens de erro (ex.: ao mover história) aparecem em vermelho {% endcomment %}
   {% for m in messages %}<div class="mensagem{% if m.tags == 'error' %} erro-msg{% endif %}">{{ m }}</div>{% endfor %}
   <main>{% block conteudo %}{% endblock %}</main>
 </body>

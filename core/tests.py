@@ -189,7 +189,7 @@ class ProjetoTests(TestCase):
             titulo="História", product_backlog=self.backlog,
             epico=epico, papel="Pessoa", acao="Agir", beneficio="Benefício",
             contexto="Contexto", evento="Evento", resultado="Resultado",
-            # ALTERADO: incluído effort=5. O RICE agora divide pelo campo Effort (requisitos 17
+            # Incluído effort=5. O RICE agora divide pelo campo Effort (requisitos 17
             # e 18), e não mais pelos Story Points; sem Effort o RICE fica "incompleto".
             story_points=5, reach=10, impact=2, confidence=80, effort=5,
         )
@@ -252,7 +252,7 @@ class ProjetoTests(TestCase):
             "titulo": "História", "product_backlog": self.backlog,
             "papel": "Pessoa", "acao": "Agir", "beneficio": "Benefício",
             "contexto": "Contexto", "evento": "Evento", "resultado": "Resultado",
-            # ALTERADO: incluído "effort": 5, pelo mesmo motivo do teste acima. O score
+            # Incluído "effort": 5, pelo mesmo motivo do teste acima. O score
             # esperado continua 320 = (10 x 2 x 80) / 5.
             "story_points": 5, "reach": 10, "impact": 2, "confidence": 80, "effort": 5,
         }
@@ -362,7 +362,7 @@ class ProjetoTests(TestCase):
         for user in [self.dono, self.membro]:
             self.client.force_login(user)
             response = self.client.get(self.url("product_backlog"))
-            # ALTERADO: a tela agora mostra "320" (rice_display) em vez de "320.00", e a
+            # A tela agora mostra "320" (rice_display) em vez de "320.00", e a
             # história com 0 Story Points aparece como "0 pts". Antes, Story Points 0 dava RICE
             # 0.00, porque o Effort era o próprio Story Points.
             for valor in ["História visível", "Story Points", "Should Have", "RICE", "Épico visível", "Sem épico", "320", "0 pts"]:
@@ -477,7 +477,7 @@ class ProjetoTests(TestCase):
 # tratados sem perder registros
 class MigracaoIntegridadeTests(TransactionTestCase):
     antiga = ("core", "0003_alter_projeto_dono")
-    # ALTERADO: de 0005 para 0007. Os testes usam o model atual (que tem Effort,
+    # De 0005 para 0007. Os testes usam o model atual (que tem Effort,
     # critérios de aceitação e período de Sprint)
     # depois de migrar, então o banco precisa chegar na última migration.
     atual = ("core", "0007_criterioaceitacao_periodo_sprint")
@@ -545,7 +545,7 @@ class MigracaoIntegridadeTests(TransactionTestCase):
             historia.delete()
 
 # ======================================================================
-# ADICIONADO: testes de Story Points, MoSCoW e RICE (HU18-HU21; requisitos 14-19) e do CRUD
+# Testes de Story Points, MoSCoW e RICE (HU18-HU21; requisitos 14-19) e do CRUD
 # de histórias (HU12-HU14), de épicos (HU15-HU16) e do vínculo entre eles (HU17).
 # ======================================================================
 class PriorizacaoTests(TestCase):
@@ -707,7 +707,7 @@ class HistoriaEpicoViewsTests(TestCase):
 
 
 # ======================================================================
-# ADICIONADO: testes do CRUD de critérios de aceitação (requisitos 12 e 13; HU12 critério 3
+# Testes do CRUD de critérios de aceitação (requisitos 12 e 13; HU12 critério 3
 # e HU13).
 # ======================================================================
 class CriterioAceitacaoTests(TestCase):
@@ -792,7 +792,7 @@ class CriterioAceitacaoTests(TestCase):
 
 
 # ======================================================================
-# ADICIONADO: testes do CRUD de Sprint Backlogs (requisito 6; HU09 e HU10).
+# Testes do CRUD de Sprint Backlogs (requisito 6; HU09 e HU10).
 # ======================================================================
 class SprintBacklogViewsTests(TestCase):
     def setUp(self):
@@ -872,7 +872,7 @@ class SprintBacklogViewsTests(TestCase):
 
 
 # ======================================================================
-# ADICIONADO: testes de mover história entre backlogs (requisito 8; HU11).
+# Testes de mover história entre backlogs (requisito 8; HU11).
 # ======================================================================
 class MoverHistoriaTests(TestCase):
     def setUp(self):

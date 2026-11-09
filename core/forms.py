@@ -135,7 +135,7 @@ class ProductBacklogForm(forms.ModelForm):
         labels = {"descricao": "Descrição"}
 
 
-# ADICIONADO: formulários do CRUD de épicos (HU15, HU16; requisito 10) e de histórias de
+# Formulários do CRUD de épicos (HU15, HU16; requisito 10) e de histórias de
 # usuário (HU12, HU13; requisitos 7, 9, 11, 14-19).
 class EpicoForm(forms.ModelForm):
     class Meta:
@@ -150,7 +150,7 @@ class HistoriaUsuarioForm(forms.ModelForm):
         model = HistoriaUsuario
         fields = [
             'titulo', 'papel', 'acao', 'beneficio',
-            # ALTERADO: contexto, evento e resultado saíram do formulário. Eles viraram campos
+            # Os campos contexto, evento e resultado saíram do formulário. Eles viraram campos
             # legados (Artefato 7, migration 0007); os critérios agora são gravados no model
             # CriterioAceitacao. Na criação da história o primeiro critério continua podendo
             # ser escrito (campos extras abaixo).
@@ -182,7 +182,7 @@ class HistoriaUsuarioForm(forms.ModelForm):
         self.fields['impact'].choices = [('', '---------')] + HistoriaUsuario.IMPACT_CHOICES
         self.fields['confidence'].choices = [('', '---------')] + HistoriaUsuario.CONFIDENCE_CHOICES
         self.fields['effort'].choices = [('', '---------')] + HistoriaUsuario.STORY_POINTS_CHOICES
-        # ADICIONADO: na criação da história (HU12, critério 3), o usuário pode já escrever o
+        # Na criação da história (HU12, critério 3), o usuário pode já escrever o
         # primeiro critério de aceitação. Os outros são adicionados depois, no detalhe da
         # história. Na edição esses campos não aparecem: os critérios têm CRUD próprio.
         if self.instance.pk is None:
@@ -212,7 +212,7 @@ class HistoriaUsuarioForm(forms.ModelForm):
         return historia
 
 
-# ADICIONADO: (Requisitos 12 e 13) formulário para criar e editar um critério de aceitação,
+# (Requisitos 12 e 13) formulário para criar e editar um critério de aceitação,
 # usando o model CriterioAceitacao definido no Artefato 7 (campos dado, quando, entao).
 class CriterioAceitacaoForm(forms.ModelForm):
     class Meta:
@@ -229,7 +229,7 @@ class CriterioAceitacaoForm(forms.ModelForm):
         }
 
 
-# ADICIONADO: (Requisito 6; HU09 e HU10) formulário para criar e editar um Sprint Backlog,
+# (Requisito 6; HU09 e HU10) formulário para criar e editar um Sprint Backlog,
 # com nome e período. A regra "data de fim não pode ser antes da de início" já está no
 # model (clean e restrição no banco, Artefato 7) e aparece como erro no formulário.
 class SprintBacklogForm(forms.ModelForm):
@@ -254,7 +254,7 @@ class SprintBacklogForm(forms.ModelForm):
         super()._post_clean()
 
 
-# ADICIONADO: (Requisito 8; HU11) formulário para mover uma história entre o Product
+# (Requisito 8; HU11) formulário para mover uma história entre o Product
 # Backlog e os Sprint Backlogs do mesmo projeto. Só aparecem os destinos possíveis: os
 # backlogs do projeto, menos aquele em que a história já está.
 class MoverHistoriaForm(forms.Form):
