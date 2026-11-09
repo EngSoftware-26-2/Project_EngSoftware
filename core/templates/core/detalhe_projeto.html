@@ -15,7 +15,9 @@
 <a href="{% url 'editar_projeto' projeto.pk %}">Editar projeto</a>
 <a href="{% url 'excluir_projeto' projeto.pk %}">Excluir projeto</a>
 {% else %}
-<form method="post" action="{% url 'sair_projeto' projeto.pk %}">{% csrf_token %}<button type="submit">Sair do projeto</button></form>
+{% comment %} ALTERADO: pede confirmação antes de sair, como já acontecia na página inicial
+   (HU24, critério 2: ao cancelar, continuo como membro). {% endcomment %}
+<form method="post" action="{% url 'sair_projeto' projeto.pk %}" onsubmit="return confirm('Deseja sair deste projeto?')">{% csrf_token %}<button type="submit">Sair do projeto</button></form>
 {% endif %}
 <a href="{% url 'inicio' %}">Voltar aos projetos</a>
 </body></html>
