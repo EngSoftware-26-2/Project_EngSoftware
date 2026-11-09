@@ -107,9 +107,14 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = "en-us"
+# ALTERADO: de "en-us" para "pt-br". A interface do sistema é em português, e com "en-us"
+# as mensagens automáticas do Django (campo obrigatório, senha fraca, valor inválido)
+# apareciam em inglês, misturadas com as mensagens em português do sistema.
+LANGUAGE_CODE = "pt-br"
 
-TIME_ZONE = "UTC"
+# ALTERADO: de "UTC" para "America/Sao_Paulo", para datas e horas (como a criação do
+# projeto) aparecerem no horário de Brasília. Previsto no Artefato 9.
+TIME_ZONE = "America/Sao_Paulo"
 
 USE_I18N = True
 
