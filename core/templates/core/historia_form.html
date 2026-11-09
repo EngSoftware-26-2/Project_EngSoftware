@@ -11,16 +11,11 @@
     <p>{{ form.acao.label_tag }}{{ form.acao }}{{ form.acao.errors }}</p>
     <p>{{ form.beneficio.label_tag }}{{ form.beneficio }}{{ form.beneficio.errors }}</p>
   </fieldset>
-  {% comment %} ALTERADO: o primeiro critério só aparece na criação da história; na edição os
-     critérios são gerenciados na página de detalhe (requisito 12). {% endcomment %}
-  {% if form.criterio_dado %}
-  <fieldset><legend>Primeiro critério de aceitação (opcional)</legend>
-    <p>{{ form.criterio_dado.label_tag }}{{ form.criterio_dado }}{{ form.criterio_dado.errors }}</p>
-    <p>{{ form.criterio_quando.label_tag }}{{ form.criterio_quando }}{{ form.criterio_quando.errors }}</p>
-    <p>{{ form.criterio_entao.label_tag }}{{ form.criterio_entao }}{{ form.criterio_entao.errors }}</p>
-    <p class="helptext">Você pode adicionar mais critérios depois, na página da história.</p>
+  <fieldset><legend>Critério de aceitação (opcional)</legend>
+    <p>{{ form.contexto.label_tag }}{{ form.contexto }}{{ form.contexto.errors }}</p>
+    <p>{{ form.evento.label_tag }}{{ form.evento }}{{ form.evento.errors }}</p>
+    <p>{{ form.resultado.label_tag }}{{ form.resultado }}{{ form.resultado.errors }}</p>
   </fieldset>
-  {% endif %}
   <fieldset><legend>Épico</legend>
     <p>{{ form.epico.label_tag }}{{ form.epico }}{{ form.epico.errors }}</p>
   </fieldset>
