@@ -12,11 +12,11 @@ from django.db import transaction
 from django.db.models import Q
 from django.db.models.deletion import ProtectedError
 
-from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAceitacao
+from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario
 
 from .forms import (
     CadastroForm, LoginForm, ProjetoForm, AdicionarMembroForm, ProductBacklogForm,
-    EpicoForm, HistoriaUsuarioForm, CriterioAceitacaoForm,
+    EpicoForm, HistoriaUsuarioForm,
 )
 
 # HU01 - Cadastro
@@ -415,10 +415,7 @@ def historia_criar(request, pk):
 def historia_detalhe(request, pk, historia_id):
     projeto = projeto_acessivel(request.user, pk)
     historia = obter_historia(projeto, historia_id)
-    # ALTERADO: a página também lista os critérios de aceitação da história (requisito 12).
-    return render(request, "core/historia_detalhe.html", {
-        "projeto": projeto, "historia": historia, "criterios": historia.criterios_aceitacao.all(),
-    })
+    return render(request, "core/historia_detalhe.html", {"projeto": projeto, "historia": historia})
 
 
 # HU13 - Editar história (inclui Story Points, MoSCoW, RICE e épico)
@@ -509,62 +506,4 @@ def epico_excluir(request, pk, epico_id):
         "projeto": projeto, "objeto": epico, "tipo": "o épico",
         "aviso": "As histórias ligadas a ele não serão apagadas, só ficarão sem épico.",
         "voltar_url": reverse("epico_detalhe", args=[projeto.pk, epico.pk]),
-    })
-
-
-# ======================================================================
-# ADICIONADO: CRUD de critérios de aceitação (requisitos 12 e 13; HU12 critério 3 e HU13),
-# usando o model CriterioAceitacao do Artefato 7. Os critérios ficam dentro da história:
-# a leitura é na página de detalhe dela, e criar, editar e excluir voltam para lá.
-# Dono e membros do projeto podem operar; quem não participa recebe 404.
-# ======================================================================
-def obter_criterio(historia, criterio_id):
-    return get_object_or_404(CriterioAceitacao, pk=criterio_id, historia_usuario=historia)
-
-
-# Requisito 12 (criar) - Adicionar critério no formato Dado / Quando / Então
-@login_required(login_url="login")
-def criterio_criar(request, pk, historia_id):
-    projeto = projeto_acessivel(request.user, pk)
-    historia = obter_historia(projeto, historia_id)
-    form = CriterioAceitacaoForm(request.POST or None, instance=CriterioAceitacao(historia_usuario=historia))
-    if request.method == "POST" and form.is_valid():
-        form.save()
-        messages.success(request, "Critério de aceitação adicionado.")
-        return redirect("historia_detalhe", pk=projeto.pk, historia_id=historia.pk)
-    return render(request, "core/criterio_form.html", {
-        "projeto": projeto, "historia": historia, "form": form, "acao": "Novo critério de aceitação",
-    })
-
-
-# Requisito 12 (atualizar) - HU13: editar um critério
-@login_required(login_url="login")
-def criterio_editar(request, pk, historia_id, criterio_id):
-    projeto = projeto_acessivel(request.user, pk)
-    historia = obter_historia(projeto, historia_id)
-    criterio = obter_criterio(historia, criterio_id)
-    form = CriterioAceitacaoForm(request.POST or None, instance=criterio)
-    if request.method == "POST" and form.is_valid():
-        form.save()
-        messages.success(request, "Critério de aceitação atualizado.")
-        return redirect("historia_detalhe", pk=projeto.pk, historia_id=historia.pk)
-    return render(request, "core/criterio_form.html", {
-        "projeto": projeto, "historia": historia, "form": form, "acao": "Editar critério de aceitação",
-    })
-
-
-# Requisito 12 (excluir) - HU13 (critério 2): apagar um critério, com confirmação
-@login_required(login_url="login")
-def criterio_excluir(request, pk, historia_id, criterio_id):
-    projeto = projeto_acessivel(request.user, pk)
-    historia = obter_historia(projeto, historia_id)
-    criterio = obter_criterio(historia, criterio_id)
-    voltar_url = reverse("historia_detalhe", args=[projeto.pk, historia.pk])
-    if request.method == "POST":
-        criterio.delete()
-        messages.success(request, "Critério de aceitação excluído.")
-        return redirect(voltar_url)
-    return render(request, "core/confirmar_exclusao_item.html", {
-        "projeto": projeto, "objeto": f"Dado {criterio.dado} quando {criterio.quando} então {criterio.entao}",
-        "tipo": "o critério de aceitação", "voltar_url": voltar_url,
     })
