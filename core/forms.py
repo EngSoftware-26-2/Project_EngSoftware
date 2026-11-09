@@ -252,3 +252,45 @@ class SprintBacklogForm(forms.ModelForm):
         if self.errors.get('data_inicio') or self.errors.get('data_fim'):
             return
         super()._post_clean()
+
+
+# ADICIONADO: (Requisito 8; HU11) formulário para mover uma história entre o Product
+# Backlog e os Sprint Backlogs do mesmo projeto. Só aparecem os destinos possíveis: os
+# backlogs do projeto, menos aquele em que a história já está.
+class MoverHistoriaForm(forms.Form):
+    DESTINO_PRODUCT_BACKLOG = 'product-backlog'
+
+    destino = forms.ChoiceField(
+        label='Mover para',
+        error_messages={'required': 'Escolha para onde mover a história.',
+                        'invalid_choice': 'Escolha um backlog deste projeto.'},
+    )
+
+    def __init__(self, *args, historia, projeto, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.historia = historia
+        opcoes = []
+        backlog = ProductBacklog.objects.filter(projeto=projeto).first()
+        if backlog is not None and historia.product_backlog_id != backlog.pk:
+            opcoes.append((self.DESTINO_PRODUCT_BACKLOG, 'Product Backlog'))
+        for sprint in projeto.sprint_backlogs.order_by('data_inicio', 'pk'):
+            if sprint.pk != historia.sprint_backlog_id:
+                opcoes.append((f'sprint-{sprint.pk}', sprint.nome))
+        self.fields['destino'].choices = opcoes
+        self.backlog = backlog
+        self.sprints = {f'sprint-{s.pk}': s for s in projeto.sprint_backlogs.all()}
+
+    def mover(self):
+        # Uma história fica em um backlog por vez (Artefato 7): ao entrar em um, sai do outro.
+        destino = self.cleaned_data['destino']
+        if destino == self.DESTINO_PRODUCT_BACKLOG:
+            self.historia.product_backlog = self.backlog
+            self.historia.sprint_backlog = None
+            nome = 'Product Backlog'
+        else:
+            sprint = self.sprints[destino]
+            self.historia.sprint_backlog = sprint
+            self.historia.product_backlog = None
+            nome = sprint.nome
+        self.historia.save()
+        return nome

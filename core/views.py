@@ -17,6 +17,7 @@ from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAce
 from .forms import (
     CadastroForm, LoginForm, ProjetoForm, AdicionarMembroForm, ProductBacklogForm,
     EpicoForm, HistoriaUsuarioForm, CriterioAceitacaoForm, SprintBacklogForm,
+    MoverHistoriaForm,
 )
 
 # HU01 - Cadastro
@@ -415,9 +416,11 @@ def historia_criar(request, pk):
 def historia_detalhe(request, pk, historia_id):
     projeto = projeto_acessivel(request.user, pk)
     historia = obter_historia(projeto, historia_id)
-    # ALTERADO: a página também lista os critérios de aceitação da história (requisito 12).
+    # ALTERADO: a página também lista os critérios de aceitação da história (requisito 12)
+    # e, desde a HU11, traz o formulário para mover a história de backlog (requisito 8).
     return render(request, "core/historia_detalhe.html", {
         "projeto": projeto, "historia": historia, "criterios": historia.criterios_aceitacao.all(),
+        "form_mover": MoverHistoriaForm(historia=historia, projeto=projeto),
     })
 
 
@@ -651,3 +654,23 @@ def sprint_excluir(request, pk, sprint_id):
         "aviso": "As histórias deste Sprint não serão apagadas: elas voltam para o Product Backlog.",
         "erro": erro, "voltar_url": voltar_url,
     }, status=409 if erro else 200)
+
+
+# ======================================================================
+# ADICIONADO: mover história entre backlogs (requisito 8; HU11). A história pode ir do
+# Product Backlog para um Sprint, voltar de um Sprint para o Product Backlog ou passar de
+# um Sprint para outro, sempre dentro do mesmo projeto.
+# ======================================================================
+@login_required(login_url="login")
+@require_POST
+def historia_mover(request, pk, historia_id):
+    projeto = projeto_acessivel(request.user, pk)
+    historia = obter_historia(projeto, historia_id)
+    form = MoverHistoriaForm(request.POST, historia=historia, projeto=projeto)
+    if form.is_valid():
+        destino = form.mover()
+        messages.success(request, f"História movida para {destino}.")
+    else:
+        for erro in form.errors.get("destino", []):
+            messages.error(request, erro)
+    return redirect("historia_detalhe", pk=projeto.pk, historia_id=historia.pk)

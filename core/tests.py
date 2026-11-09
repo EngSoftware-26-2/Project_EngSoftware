@@ -869,3 +869,68 @@ class SprintBacklogViewsTests(TestCase):
         self.assertEqual(self.client.get(self.url("sprint_lista")).status_code, 404)
         self.assertEqual(self.client.post(self.url("sprint_excluir", sprint.pk)).status_code, 404)
         self.assertTrue(SprintBacklog.objects.exists())
+
+
+# ======================================================================
+# ADICIONADO: testes de mover história entre backlogs (requisito 8; HU11).
+# ======================================================================
+class MoverHistoriaTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("jade", email="jade@exemplo.com", password="Senha-forte-123")
+        self.estranho = User.objects.create_user("kai", email="kai@exemplo.com", password="Senha-forte-123")
+        self.projeto = Projeto.objects.create(nome="Projeto M", dono=self.dono)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.sprint1 = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1", **SPRINT_PERIODO)
+        self.sprint2 = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 2", **SPRINT_PERIODO)
+        self.historia = HistoriaUsuario.objects.create(
+            titulo="Mover", product_backlog=self.backlog, papel="a", acao="b", beneficio="c")
+        self.client.force_login(self.dono)
+
+    def mover(self, destino, historia=None):
+        h = historia or self.historia
+        return self.client.post(reverse("historia_mover", args=[self.projeto.pk, h.pk]), {"destino": destino})
+
+    def test_hu11_product_backlog_para_sprint(self):
+        self.mover(f"sprint-{self.sprint1.pk}")
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.sprint_backlog, self.sprint1)
+        self.assertIsNone(self.historia.product_backlog)
+        self.assertNotContains(self.client.get(reverse("product_backlog", args=[self.projeto.pk])), ">Mover<")
+        self.assertContains(self.client.get(reverse("sprint_detalhe", args=[self.projeto.pk, self.sprint1.pk])), "Mover")
+
+    def test_hu11_sprint_de_volta_para_product_backlog(self):
+        self.mover(f"sprint-{self.sprint1.pk}")
+        self.mover("product-backlog")
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.product_backlog, self.backlog)
+        self.assertIsNone(self.historia.sprint_backlog)
+
+    def test_hu11_de_um_sprint_para_outro(self):
+        self.mover(f"sprint-{self.sprint1.pk}")
+        self.mover(f"sprint-{self.sprint2.pk}")
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.sprint_backlog, self.sprint2)
+        self.assertFalse(self.sprint1.historias.exists())
+
+    def test_destino_atual_nao_e_oferecido(self):
+        resp = self.client.get(reverse("historia_detalhe", args=[self.projeto.pk, self.historia.pk]))
+        self.assertNotContains(resp, 'value="product-backlog"')
+        self.assertContains(resp, f'value="sprint-{self.sprint1.pk}"')
+
+    def test_sprint_de_outro_projeto_e_recusado(self):
+        outro = Projeto.objects.create(nome="Outro", dono=self.estranho)
+        sprint_outro = SprintBacklog.objects.create(projeto=outro, nome="Sprint X", **SPRINT_PERIODO)
+        self.mover(f"sprint-{sprint_outro.pk}")
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.product_backlog, self.backlog)
+        self.assertIsNone(self.historia.sprint_backlog)
+
+    def test_mover_exige_post(self):
+        resp = self.client.get(reverse("historia_mover", args=[self.projeto.pk, self.historia.pk]))
+        self.assertEqual(resp.status_code, 405)
+
+    def test_estranho_nao_move(self):
+        self.client.force_login(self.estranho)
+        self.assertEqual(self.mover(f"sprint-{self.sprint1.pk}").status_code, 404)
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.product_backlog, self.backlog)
