@@ -6,7 +6,7 @@ from django.test import Client, TestCase, TransactionTestCase
 from django.urls import reverse
 from datetime import date
 
-from .models import Projeto, ProductBacklog, HistoriaUsuario, Epico, SprintBacklog
+from .models import Projeto, ProductBacklog, HistoriaUsuario, Epico, SprintBacklog, CriterioAceitacao
 
 
 SPRINT_PERIODO = {
@@ -704,3 +704,88 @@ class HistoriaEpicoViewsTests(TestCase):
             self.assertEqual(self.client.get(self.url(nome, *args)).status_code, 404)
         self.assertEqual(self.client.post(self.url("historia_excluir", h.pk)).status_code, 404)
         self.assertTrue(HistoriaUsuario.objects.exists())
+
+
+# ======================================================================
+# ADICIONADO: testes do CRUD de critérios de aceitação (requisitos 12 e 13; HU12 critério 3
+# e HU13).
+# ======================================================================
+class CriterioAceitacaoTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("dani", email="dani@exemplo.com", password="Senha-forte-123")
+        self.membro = User.objects.create_user("edu", email="edu@exemplo.com", password="Senha-forte-123")
+        self.estranho = User.objects.create_user("fabi", email="fabi@exemplo.com", password="Senha-forte-123")
+        self.projeto = Projeto.objects.create(nome="Projeto C", dono=self.dono)
+        self.projeto.membros.add(self.membro)
+        backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.historia = HistoriaUsuario.objects.create(
+            titulo="Login", product_backlog=backlog, papel="usuário", acao="entrar", beneficio="ver projetos")
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, self.historia.pk, *args])
+
+    def criterio(self, **extra):
+        d = {"dado": "tenho conta", "quando": "digito e-mail e senha certos", "entao": "entro no sistema"}
+        d.update(extra)
+        return d
+
+    def test_criar_varios_criterios_e_listar_na_historia(self):
+        self.assertRedirects(self.client.post(self.url("criterio_criar"), self.criterio()), self.url("historia_detalhe"))
+        self.client.post(self.url("criterio_criar"), self.criterio(dado="errei a senha", quando="tento entrar", entao="vejo um aviso"))
+        self.assertEqual(self.historia.criterios_aceitacao.count(), 2)
+        resp = self.client.get(self.url("historia_detalhe"))
+        self.assertContains(resp, "digito e-mail e senha certos")
+        self.assertContains(resp, "errei a senha")
+
+    def test_requisito13_formato_completo_obrigatorio(self):
+        resp = self.client.post(self.url("criterio_criar"), self.criterio(quando=""))
+        self.assertContains(resp, "Preencha o Quando")
+        self.assertFalse(CriterioAceitacao.objects.exists())
+
+    def test_hu13_editar_e_excluir_criterio(self):
+        c = CriterioAceitacao.objects.create(historia_usuario=self.historia, **self.criterio())
+        self.client.post(self.url("criterio_editar", c.pk), self.criterio(entao="vejo meus projetos"))
+        c.refresh_from_db()
+        self.assertEqual(c.entao, "vejo meus projetos")
+        self.client.get(self.url("criterio_excluir", c.pk))  # tela de confirmação não apaga
+        self.assertTrue(CriterioAceitacao.objects.filter(pk=c.pk).exists())
+        self.assertRedirects(self.client.post(self.url("criterio_excluir", c.pk)), self.url("historia_detalhe"))
+        self.assertFalse(CriterioAceitacao.objects.filter(pk=c.pk).exists())
+
+    def test_hu12_primeiro_criterio_na_criacao_da_historia(self):
+        dados = {"titulo": "Sair", "papel": "usuário", "acao": "sair", "beneficio": "proteger a conta",
+                 "criterio_dado": "estou logado", "criterio_quando": "clico em Sair",
+                 "criterio_entao": "volto para o login"}
+        self.client.post(reverse("historia_criar", args=[self.projeto.pk]), dados)
+        nova = HistoriaUsuario.objects.get(titulo="Sair")
+        self.assertEqual(nova.criterios_aceitacao.get().quando, "clico em Sair")
+
+    def test_hu12_primeiro_criterio_incompleto_nao_cria_historia(self):
+        dados = {"titulo": "Sair", "papel": "usuário", "acao": "sair", "beneficio": "proteger a conta",
+                 "criterio_dado": "estou logado"}
+        resp = self.client.post(reverse("historia_criar", args=[self.projeto.pk]), dados)
+        self.assertContains(resp, "preencha Dado, Quando e Então")
+        self.assertFalse(HistoriaUsuario.objects.filter(titulo="Sair").exists())
+
+    def test_excluir_historia_apaga_os_criterios(self):
+        CriterioAceitacao.objects.create(historia_usuario=self.historia, **self.criterio())
+        self.client.post(reverse("historia_excluir", args=[self.projeto.pk, self.historia.pk]))
+        self.assertFalse(CriterioAceitacao.objects.exists())
+
+    def test_membro_gerencia_criterios(self):
+        self.client.force_login(self.membro)
+        self.assertRedirects(self.client.post(self.url("criterio_criar"), self.criterio()), self.url("historia_detalhe"))
+
+    def test_estranho_nao_acessa_criterios(self):
+        c = CriterioAceitacao.objects.create(historia_usuario=self.historia, **self.criterio())
+        self.client.force_login(self.estranho)
+        self.assertEqual(self.client.get(self.url("criterio_criar")).status_code, 404)
+        self.assertEqual(self.client.post(self.url("criterio_excluir", c.pk)).status_code, 404)
+        self.assertTrue(CriterioAceitacao.objects.filter(pk=c.pk).exists())
+
+    def test_criterio_de_outra_historia_nao_e_acessado_por_esta(self):
+        outra = HistoriaUsuario.objects.create(
+            titulo="Outra", product_backlog=self.historia.product_backlog, papel="a", acao="b", beneficio="c")
+        c = CriterioAceitacao.objects.create(historia_usuario=outra, **self.criterio())
+        self.assertEqual(self.client.get(self.url("criterio_editar", c.pk)).status_code, 404)
