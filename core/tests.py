@@ -473,6 +473,28 @@ class ProjetoTests(TestCase):
         self.assertIsNone(historia.sprint_backlog_id)
 
 
+# ======================================================================
+# Testes dos ajustes nas telas de membros e de detalhe do projeto (HU22, HU24).
+# ======================================================================
+class AjustesMembrosTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("lia", email="lia@exemplo.com", password="Senha-forte-123")
+        self.membro = User.objects.create_user("mel", email="mel@exemplo.com", password="Senha-forte-123")
+        self.projeto = Projeto.objects.create(nome="Projeto J", dono=self.dono)
+        self.projeto.membros.add(self.membro)
+
+    def test_hu22_mensagem_quando_nao_existe_conta(self):
+        self.client.force_login(self.dono)
+        resp = self.client.post(reverse("membros_projeto", args=[self.projeto.pk]), {"email": "ninguem@exemplo.com"})
+        self.assertContains(resp, "Nenhuma conta com este e-mail.")
+        self.assertEqual(self.projeto.membros.count(), 1)
+
+    def test_hu24_sair_pelo_detalhe_pede_confirmacao(self):
+        self.client.force_login(self.membro)
+        resp = self.client.get(reverse("detalhe_projeto", args=[self.projeto.pk]))
+        self.assertContains(resp, "return confirm('Deseja sair deste projeto?')")
+
+
 # Migrações 0004/0005: dados antigos (história sem backlog, vínculos entre projetos) são
 # tratados sem perder registros
 class MigracaoIntegridadeTests(TransactionTestCase):
