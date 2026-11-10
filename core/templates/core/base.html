@@ -1,44 +1,16 @@
-{# Layout base das telas de histórias e épicos #}
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block titulo %}Gestão de requisitos{% endblock %}</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 960px; margin: 0 auto; padding: 16px; color: #1a1a1a; }
-    nav a { margin-right: 16px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
-    th { background: #1F3864; color: #fff; }
-    .botao { display: inline-block; padding: 6px 12px; background: #1F3864; color: #fff; text-decoration: none; border: 0; border-radius: 4px; cursor: pointer; font: inherit; }
-    .botao.perigo { background: #b00020; }
-    .botao.secundario { background: #777; }
-    .mensagem { padding: 8px 12px; background: #e6f0e6; border-left: 4px solid #2e7d32; margin: 12px 0; }
-    .erro, .errorlist { color: #b00020; }
-    .mensagem.erro-msg { background: #fdecee; border-left-color: #b00020; }
-    form p { margin: 10px 0; }
-    form label { display: block; font-weight: 600; }
-    input[type=text], input[type=number], textarea, select { width: 100%; max-width: 520px; padding: 6px; box-sizing: border-box; }
-    .helptext { display: block; color: #666; font-size: .85em; }
-    fieldset { border: 1px solid #ddd; margin: 16px 0; padding: 8px 16px; }
-    .vazio { color: #666; font-style: italic; }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>{{ projeto.nome }}</h1>
-    <nav>
-      <a href="{% url 'inicio' %}">Meus projetos</a>
-      <a href="{% url 'detalhe_projeto' projeto.id %}">Projeto</a>
-      {% if projeto.product_backlog %}<a href="{% url 'product_backlog' projeto.id %}">Product Backlog</a>{% endif %}
-      <a href="{% url 'sprint_lista' projeto.id %}">Sprints</a>
-      <a href="{% url 'historia_lista' projeto.id %}">Histórias</a>
-      <a href="{% url 'epico_lista' projeto.id %}">Épicos</a>
-    </nav>
-  </header>
-  {% comment %} Mensagens de erro (ex.: ao mover história) aparecem em vermelho {% endcomment %}
-  {% for m in messages %}<div class="mensagem{% if m.tags == 'error' %} erro-msg{% endif %}">{{ m }}</div>{% endfor %}
-  <main>{% block conteudo %}{% endblock %}</main>
-</body>
-</html>
+{% extends "core/base_site.html" %}
+{% comment %} Layout das telas de dentro de um projeto: nome do projeto e as abas de navegação {% endcomment %}
+{% block cabecalho %}
+<div class="cabecalho">
+  <h1>{{ projeto.nome }}</h1>
+  <nav class="abas">
+    <a href="{% url 'inicio' %}">Meus projetos</a>
+    <a href="{% url 'detalhe_projeto' projeto.id %}">Projeto</a>
+    {% if projeto.product_backlog %}<a href="{% url 'product_backlog' projeto.id %}">Product Backlog</a>{% endif %}
+    <a href="{% url 'sprint_lista' projeto.id %}">Sprints</a>
+    <a href="{% url 'historia_lista' projeto.id %}">Histórias</a>
+    <a href="{% url 'epico_lista' projeto.id %}">Épicos</a>
+    <a href="{% url 'membros_projeto' projeto.id %}">Membros</a>
+  </nav>
+</div>
+{% endblock %}

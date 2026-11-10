@@ -1,29 +1,13 @@
-
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <title>Criar Projeto</title>
-</head>
-<body>
-
-    <h1>Criar Novo Projeto</h1>
-
-    <form method="post">
-        {% csrf_token %}
-
-        {{ form.as_p }}
-
-        <button type="submit">
-            Criar Projeto
-        </button>
-    </form>
-
-    <p>
-        <a href="{% url 'inicio' %}">
-            Voltar
-        </a>
-    </p>
-
-</body>
-</html>
+{% extends "core/base_site.html" %}
+{% block titulo %}Criar Projeto{% endblock %}
+{% block cabecalho %}<div class="cabecalho"><h1>Criar Novo Projeto</h1></div>{% endblock %}
+{% block conteudo %}
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <div class="acoes">
+    <button type="submit">Criar Projeto</button>
+    <a class="botao secundario" href="{% url 'inicio' %}">Voltar</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,76 +1,32 @@
+{% extends "core/base_site.html" %}
+{% block titulo %}Meus Projetos{% endblock %}
+{% block cabecalho %}<div class="cabecalho"><h1>Meus Projetos</h1></div>{% endblock %}
+{% block conteudo %}
+<p>Bem-vindo, {{ request.user.first_name }}!</p>
+<div class="acoes"><a class="botao" href="{% url 'criar_projeto' %}">Criar Novo Projeto</a></div>
 
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <title>Meus Projetos</title>
-</head>
-<body>
-
-    <h1>Meus Projetos</h1>
-
-    <p>
-        Bem-vindo, {{ request.user.first_name }}!
-    </p>
-
-    <a href="{% url 'criar_projeto' %}">
-        Criar Novo Projeto
-    </a>
-
-    <hr>
-
-    {% for projeto in projetos %}
-
-        <h3><a href="{% url 'detalhe_projeto' projeto.id %}">{{ projeto.nome }}</a></h3>
-
-        <p>{{ projeto.descricao }}</p>
-
-        {% if projeto.dono_id == request.user.id %}
-
-            <p>Participação: Dono</p>
-
-            <a href="{% url 'editar_projeto' projeto.id %}">
-                Editar Projeto
-            </a>
-
-            <a href="{% url 'excluir_projeto' projeto.id %}">
-                Excluir Projeto
-            </a>
-
-            <a href="{% url 'membros_projeto' projeto.id %}">
-                Gerenciar Membros
-            </a>
-
-        {% else %}
-
-            <p>Participação: Membro</p>
-
-            <form
-                method="post"
-                action="{% url 'sair_projeto' projeto.id %}"
-                onsubmit="return confirm('Deseja sair deste projeto?')"
-            >
-                {% csrf_token %}
-
-                <button type="submit">
-                    Sair do Projeto
-                </button>
-            </form>
-
-        {% endif %}
-
-        <hr>
-
-    {% empty %}
-
-        <p>Você ainda não possui projetos.</p>
-
-    {% endfor %}
-
-    <form method="post" action="{% url 'logout' %}">
-        {% csrf_token %}
-        <button type="submit">Sair da Conta</button>
+{% for projeto in projetos %}
+<div class="cartao">
+  <h3><a href="{% url 'detalhe_projeto' projeto.id %}">{{ projeto.nome }}</a></h3>
+  {% if projeto.descricao %}<p>{{ projeto.descricao }}</p>{% endif %}
+  {% if projeto.dono_id == request.user.id %}
+  <p><span class="etiqueta">Participação: Dono</span></p>
+  <div class="acoes">
+    <a class="botao secundario" href="{% url 'editar_projeto' projeto.id %}">Editar Projeto</a>
+    <a class="botao secundario" href="{% url 'membros_projeto' projeto.id %}">Gerenciar Membros</a>
+    <a class="botao perigo" href="{% url 'excluir_projeto' projeto.id %}">Excluir Projeto</a>
+  </div>
+  {% else %}
+  <p><span class="etiqueta">Participação: Membro</span></p>
+  <div class="acoes">
+    <form method="post" action="{% url 'sair_projeto' projeto.id %}" onsubmit="return confirm('Deseja sair deste projeto?')">
+      {% csrf_token %}
+      <button type="submit" class="perigo">Sair do Projeto</button>
     </form>
-
-</body>
-</html>
+  </div>
+  {% endif %}
+</div>
+{% empty %}
+<p class="vazio">Você ainda não possui projetos.</p>
+{% endfor %}
+{% endblock %}

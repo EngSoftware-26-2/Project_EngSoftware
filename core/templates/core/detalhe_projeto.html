@@ -1,25 +1,30 @@
-<!DOCTYPE html>
-<html lang="pt-br"><head><meta charset="UTF-8"><title>{{ projeto.nome }}</title></head>
-<body><h1>{{ projeto.nome }}</h1><p>{{ projeto.descricao|linebreaksbr }}</p>
-<p>Dono: {{ projeto.dono.first_name }} ({{ projeto.dono.email }})</p>
-<a href="{% url 'membros_projeto' projeto.pk %}">Ver membros</a>
-{% if projeto.product_backlog %}
-<a href="{% url 'product_backlog' projeto.pk %}">Ver Product Backlog</a>
-{% else %}
-<a href="{% url 'criar_product_backlog' projeto.pk %}">Criar Product Backlog</a>
-{% endif %}
-{# Acesso às histórias (HU12-HU14) e aos épicos (HU15-HU17) do projeto #}
-{% comment %} Acesso aos Sprint Backlogs (HU09, HU10) {% endcomment %}
-<a href="{% url 'sprint_lista' projeto.pk %}">Sprints</a>
-<a href="{% url 'historia_lista' projeto.pk %}">Histórias</a>
-<a href="{% url 'epico_lista' projeto.pk %}">Épicos</a>
-{% if projeto.dono_id == request.user.id %}
-<a href="{% url 'editar_projeto' projeto.pk %}">Editar projeto</a>
-<a href="{% url 'excluir_projeto' projeto.pk %}">Excluir projeto</a>
-{% else %}
-{% comment %} Pede confirmação antes de sair, como já acontecia na página inicial
-   (HU24, critério 2: ao cancelar, continuo como membro). {% endcomment %}
-<form method="post" action="{% url 'sair_projeto' projeto.pk %}" onsubmit="return confirm('Deseja sair deste projeto?')">{% csrf_token %}<button type="submit">Sair do projeto</button></form>
-{% endif %}
-<a href="{% url 'inicio' %}">Voltar aos projetos</a>
-</body></html>
+{% extends "core/base.html" %}
+{% block titulo %}{{ projeto.nome }}{% endblock %}
+{% block conteudo %}
+<div class="cartao">
+  {% if projeto.descricao %}<p>{{ projeto.descricao|linebreaksbr }}</p>{% endif %}
+  <p>Dono: {{ projeto.dono.first_name }} ({{ projeto.dono.email }})</p>
+</div>
+<div class="acoes">
+  <a class="botao" href="{% url 'membros_projeto' projeto.pk %}">Ver membros</a>
+  {% if projeto.product_backlog %}
+  <a class="botao" href="{% url 'product_backlog' projeto.pk %}">Ver Product Backlog</a>
+  {% else %}
+  <a class="botao" href="{% url 'criar_product_backlog' projeto.pk %}">Criar Product Backlog</a>
+  {% endif %}
+  {% comment %} Sprint Backlogs (HU09, HU10), histórias (HU12-HU14) e épicos (HU15-HU17) {% endcomment %}
+  <a class="botao" href="{% url 'sprint_lista' projeto.pk %}">Sprints</a>
+  <a class="botao" href="{% url 'historia_lista' projeto.pk %}">Histórias</a>
+  <a class="botao" href="{% url 'epico_lista' projeto.pk %}">Épicos</a>
+</div>
+<div class="acoes">
+  {% if projeto.dono_id == request.user.id %}
+  <a class="botao secundario" href="{% url 'editar_projeto' projeto.pk %}">Editar projeto</a>
+  <a class="botao perigo" href="{% url 'excluir_projeto' projeto.pk %}">Excluir projeto</a>
+  {% else %}
+  {% comment %} Pede confirmação antes de sair (HU24, critério 2: ao cancelar, continuo como membro) {% endcomment %}
+  <form method="post" action="{% url 'sair_projeto' projeto.pk %}" onsubmit="return confirm('Deseja sair deste projeto?')">{% csrf_token %}<button type="submit" class="perigo">Sair do projeto</button></form>
+  {% endif %}
+  <a class="botao secundario" href="{% url 'inicio' %}">Voltar aos projetos</a>
+</div>
+{% endblock %}
