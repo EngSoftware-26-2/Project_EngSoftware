@@ -1,5 +1,6 @@
 # Rotas do sistema: autenticação (HU01-HU03), projetos e membros (HU04-HU07, HU22-HU24),
-# Product Backlog (HU08), histórias (HU12-HU14) e épicos (HU15-HU17).
+# Product Backlog (HU08), histórias (HU12-HU14), critérios de aceitação (requisito 12)
+# e épicos (HU15-HU17).
 from django.urls import path
 from . import views
 
@@ -25,6 +26,10 @@ urlpatterns = [
     path("projetos/<int:pk>/historias/<int:historia_id>/", views.historia_detalhe, name="historia_detalhe"),
     path("projetos/<int:pk>/historias/<int:historia_id>/editar/", views.historia_editar, name="historia_editar"),
     path("projetos/<int:pk>/historias/<int:historia_id>/excluir/", views.historia_excluir, name="historia_excluir"),
+    # ADICIONADO: critérios de aceitação de uma história (requisitos 12 e 13)
+    path("projetos/<int:pk>/historias/<int:historia_id>/criterios/novo/", views.criterio_criar, name="criterio_criar"),
+    path("projetos/<int:pk>/historias/<int:historia_id>/criterios/<int:criterio_id>/editar/", views.criterio_editar, name="criterio_editar"),
+    path("projetos/<int:pk>/historias/<int:historia_id>/criterios/<int:criterio_id>/excluir/", views.criterio_excluir, name="criterio_excluir"),
     # ADICIONADO: épicos (HU15, HU16) e histórias ligadas a cada um (HU17)
     path("projetos/<int:pk>/epicos/", views.epico_lista, name="epico_lista"),
     path("projetos/<int:pk>/epicos/novo/", views.epico_criar, name="epico_criar"),
