@@ -5,13 +5,13 @@
 <a href="{% url 'editar_product_backlog' projeto.pk %}">Editar Product Backlog</a>
 <a href="{% url 'excluir_product_backlog' projeto.pk %}">Excluir Product Backlog</a>
 <h2>Histórias</h2>
-{# ADICIONADO: atalho para criar história (HU12) #}
+{# Atalho para criar história (HU12) #}
 <a href="{% url 'historia_criar' projeto.pk %}">Nova história</a>
 <table>
 <thead><tr><th>Título</th><th>Story Points</th><th>MoSCoW</th><th>RICE</th><th>Épico</th></tr></thead>
 <tbody>
 {% for historia in historias %}
-{% comment %} ALTERADO: o título virou link para o detalhe da história; Story Points e RICE passaram a
+{% comment %} O título virou link para o detalhe da história; Story Points e RICE passaram a
    usar story_points_display e rice_display, porque agora podem estar vazios ("sem
    estimativa", "RICE incompleto", "não calculável") e o floatformat mostrava em branco. {% endcomment %}
 <tr><td><a href="{% url 'historia_detalhe' projeto.pk historia.pk %}">{{ historia.titulo }}</a></td><td>{{ historia.story_points_display }}</td>

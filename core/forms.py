@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db.models import Q
-from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAceitacao
+from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAceitacao, SprintBacklog
 
 # HU01 - Formulário de cadastro: o e-mail é usado como login (username) e não pode repetir;
 # a senha passa pelos validadores de senha do Django.
@@ -135,7 +135,7 @@ class ProductBacklogForm(forms.ModelForm):
         labels = {"descricao": "Descrição"}
 
 
-# ADICIONADO: formulários do CRUD de épicos (HU15, HU16; requisito 10) e de histórias de
+# Formulários do CRUD de épicos (HU15, HU16; requisito 10) e de histórias de
 # usuário (HU12, HU13; requisitos 7, 9, 11, 14-19).
 class EpicoForm(forms.ModelForm):
     class Meta:
@@ -150,7 +150,7 @@ class HistoriaUsuarioForm(forms.ModelForm):
         model = HistoriaUsuario
         fields = [
             'titulo', 'papel', 'acao', 'beneficio',
-            # ALTERADO: contexto, evento e resultado saíram do formulário. Eles viraram campos
+            # Os campos contexto, evento e resultado saíram do formulário. Eles viraram campos
             # legados (Artefato 7, migration 0007); os critérios agora são gravados no model
             # CriterioAceitacao. Na criação da história o primeiro critério continua podendo
             # ser escrito (campos extras abaixo).
@@ -182,7 +182,7 @@ class HistoriaUsuarioForm(forms.ModelForm):
         self.fields['impact'].choices = [('', '---------')] + HistoriaUsuario.IMPACT_CHOICES
         self.fields['confidence'].choices = [('', '---------')] + HistoriaUsuario.CONFIDENCE_CHOICES
         self.fields['effort'].choices = [('', '---------')] + HistoriaUsuario.STORY_POINTS_CHOICES
-        # ADICIONADO: na criação da história (HU12, critério 3), o usuário pode já escrever o
+        # Na criação da história (HU12, critério 3), o usuário pode já escrever o
         # primeiro critério de aceitação. Os outros são adicionados depois, no detalhe da
         # história. Na edição esses campos não aparecem: os critérios têm CRUD próprio.
         if self.instance.pk is None:
@@ -212,7 +212,7 @@ class HistoriaUsuarioForm(forms.ModelForm):
         return historia
 
 
-# ADICIONADO: (Requisitos 12 e 13) formulário para criar e editar um critério de aceitação,
+# (Requisitos 12 e 13) formulário para criar e editar um critério de aceitação,
 # usando o model CriterioAceitacao definido no Artefato 7 (campos dado, quando, entao).
 class CriterioAceitacaoForm(forms.ModelForm):
     class Meta:
@@ -227,3 +227,70 @@ class CriterioAceitacaoForm(forms.ModelForm):
             'quando': {'required': 'Preencha o Quando (ação ou evento).'},
             'entao': {'required': 'Preencha o Então (resultado esperado).'},
         }
+
+
+# (Requisito 6; HU09 e HU10) formulário para criar e editar um Sprint Backlog,
+# com nome e período. A regra "data de fim não pode ser antes da de início" já está no
+# model (clean e restrição no banco, Artefato 7) e aparece como erro no formulário.
+class SprintBacklogForm(forms.ModelForm):
+    class Meta:
+        model = SprintBacklog
+        fields = ['nome', 'data_inicio', 'data_fim']
+        widgets = {
+            'data_inicio': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+            'data_fim': forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d'),
+        }
+        error_messages = {
+            'nome': {'required': 'O nome do Sprint Backlog é obrigatório.'},
+            'data_inicio': {'required': 'Informe a data de início.', 'invalid': 'Informe uma data válida.'},
+            'data_fim': {'required': 'Informe a data de fim.', 'invalid': 'Informe uma data válida.'},
+        }
+
+    def _post_clean(self):
+        # Se alguma data faltou, o erro do próprio campo já avisa; evita repetir a mensagem
+        # genérica do model ("deve informar as datas de início e fim").
+        if self.errors.get('data_inicio') or self.errors.get('data_fim'):
+            return
+        super()._post_clean()
+
+
+# (Requisito 8; HU11) formulário para mover uma história entre o Product
+# Backlog e os Sprint Backlogs do mesmo projeto. Só aparecem os destinos possíveis: os
+# backlogs do projeto, menos aquele em que a história já está.
+class MoverHistoriaForm(forms.Form):
+    DESTINO_PRODUCT_BACKLOG = 'product-backlog'
+
+    destino = forms.ChoiceField(
+        label='Mover para',
+        error_messages={'required': 'Escolha para onde mover a história.',
+                        'invalid_choice': 'Escolha um backlog deste projeto.'},
+    )
+
+    def __init__(self, *args, historia, projeto, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.historia = historia
+        opcoes = []
+        backlog = ProductBacklog.objects.filter(projeto=projeto).first()
+        if backlog is not None and historia.product_backlog_id != backlog.pk:
+            opcoes.append((self.DESTINO_PRODUCT_BACKLOG, 'Product Backlog'))
+        for sprint in projeto.sprint_backlogs.order_by('data_inicio', 'pk'):
+            if sprint.pk != historia.sprint_backlog_id:
+                opcoes.append((f'sprint-{sprint.pk}', sprint.nome))
+        self.fields['destino'].choices = opcoes
+        self.backlog = backlog
+        self.sprints = {f'sprint-{s.pk}': s for s in projeto.sprint_backlogs.all()}
+
+    def mover(self):
+        # Uma história fica em um backlog por vez (Artefato 7): ao entrar em um, sai do outro.
+        destino = self.cleaned_data['destino']
+        if destino == self.DESTINO_PRODUCT_BACKLOG:
+            self.historia.product_backlog = self.backlog
+            self.historia.sprint_backlog = None
+            nome = 'Product Backlog'
+        else:
+            sprint = self.sprints[destino]
+            self.historia.sprint_backlog = sprint
+            self.historia.product_backlog = None
+            nome = sprint.nome
+        self.historia.save()
+        return nome

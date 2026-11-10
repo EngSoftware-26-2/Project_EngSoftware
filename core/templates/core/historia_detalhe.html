@@ -3,7 +3,7 @@
 {% block conteudo %}
 <h2>{{ historia.titulo }}</h2>
 <p><strong>Como um</strong> {{ historia.papel }}, <strong>eu quero</strong> {{ historia.acao }} <strong>para</strong> {{ historia.beneficio }}.</p>
-{% comment %} ALTERADO: em vez de um único critério (campos legados da história), a página
+{% comment %} Em vez de um único critério (campos legados da história), a página
    lista todos os critérios de aceitação, com opções de adicionar, editar e excluir
    (requisito 12). {% endcomment %}
 <h3>Critérios de aceitação</h3>
@@ -24,6 +24,18 @@
 <p class="vazio">Esta história ainda não tem critérios de aceitação.</p>
 {% endif %}
 <p><a class="botao" href="{% url 'criterio_criar' projeto.id historia.id %}">Adicionar critério</a></p>
+{% comment %} Onde a história está e para onde pode ir (requisito 8; HU11) {% endcomment %}
+<h3>Backlog</h3>
+<p>Está em: <strong>{% if historia.sprint_backlog %}<a href="{% url 'sprint_detalhe' projeto.id historia.sprint_backlog.id %}">{{ historia.sprint_backlog.nome }}</a>{% else %}Product Backlog{% endif %}</strong></p>
+{% if form_mover.fields.destino.choices %}
+<form method="post" action="{% url 'historia_mover' projeto.id historia.id %}">
+  {% csrf_token %}
+  <p>{{ form_mover.destino.label_tag }}{{ form_mover.destino }}</p>
+  <button class="botao" type="submit">Mover</button>
+</form>
+{% else %}
+<p class="vazio">Não há outro backlog neste projeto. Crie um Sprint Backlog para poder mover a história.</p>
+{% endif %}
 <h3>Priorização</h3>
 <table>
   <tr><th>Épico</th><td>{% if historia.epico %}<a href="{% url 'epico_detalhe' projeto.id historia.epico.id %}">{{ historia.epico }}</a>{% else %}Sem épico{% endif %}</td></tr>

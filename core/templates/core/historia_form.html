@@ -11,7 +11,7 @@
     <p>{{ form.acao.label_tag }}{{ form.acao }}{{ form.acao.errors }}</p>
     <p>{{ form.beneficio.label_tag }}{{ form.beneficio }}{{ form.beneficio.errors }}</p>
   </fieldset>
-  {% comment %} ALTERADO: o primeiro critério só aparece na criação da história; na edição os
+  {% comment %} O primeiro critério só aparece na criação da história; na edição os
      critérios são gerenciados na página de detalhe (requisito 12). {% endcomment %}
   {% if form.criterio_dado %}
   <fieldset><legend>Primeiro critério de aceitação (opcional)</legend>

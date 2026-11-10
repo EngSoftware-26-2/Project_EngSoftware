@@ -189,7 +189,7 @@ class ProjetoTests(TestCase):
             titulo="História", product_backlog=self.backlog,
             epico=epico, papel="Pessoa", acao="Agir", beneficio="Benefício",
             contexto="Contexto", evento="Evento", resultado="Resultado",
-            # ALTERADO: incluído effort=5. O RICE agora divide pelo campo Effort (requisitos 17
+            # Incluído effort=5. O RICE agora divide pelo campo Effort (requisitos 17
             # e 18), e não mais pelos Story Points; sem Effort o RICE fica "incompleto".
             story_points=5, reach=10, impact=2, confidence=80, effort=5,
         )
@@ -252,7 +252,7 @@ class ProjetoTests(TestCase):
             "titulo": "História", "product_backlog": self.backlog,
             "papel": "Pessoa", "acao": "Agir", "beneficio": "Benefício",
             "contexto": "Contexto", "evento": "Evento", "resultado": "Resultado",
-            # ALTERADO: incluído "effort": 5, pelo mesmo motivo do teste acima. O score
+            # Incluído "effort": 5, pelo mesmo motivo do teste acima. O score
             # esperado continua 320 = (10 x 2 x 80) / 5.
             "story_points": 5, "reach": 10, "impact": 2, "confidence": 80, "effort": 5,
         }
@@ -362,7 +362,7 @@ class ProjetoTests(TestCase):
         for user in [self.dono, self.membro]:
             self.client.force_login(user)
             response = self.client.get(self.url("product_backlog"))
-            # ALTERADO: a tela agora mostra "320" (rice_display) em vez de "320.00", e a
+            # A tela agora mostra "320" (rice_display) em vez de "320.00", e a
             # história com 0 Story Points aparece como "0 pts". Antes, Story Points 0 dava RICE
             # 0.00, porque o Effort era o próprio Story Points.
             for valor in ["História visível", "Story Points", "Should Have", "RICE", "Épico visível", "Sem épico", "320", "0 pts"]:
@@ -477,7 +477,7 @@ class ProjetoTests(TestCase):
 # tratados sem perder registros
 class MigracaoIntegridadeTests(TransactionTestCase):
     antiga = ("core", "0003_alter_projeto_dono")
-    # ALTERADO: de 0005 para 0007. Os testes usam o model atual (que tem Effort,
+    # De 0005 para 0007. Os testes usam o model atual (que tem Effort,
     # critérios de aceitação e período de Sprint)
     # depois de migrar, então o banco precisa chegar na última migration.
     atual = ("core", "0007_criterioaceitacao_periodo_sprint")
@@ -545,7 +545,7 @@ class MigracaoIntegridadeTests(TransactionTestCase):
             historia.delete()
 
 # ======================================================================
-# ADICIONADO: testes de Story Points, MoSCoW e RICE (HU18-HU21; requisitos 14-19) e do CRUD
+# Testes de Story Points, MoSCoW e RICE (HU18-HU21; requisitos 14-19) e do CRUD
 # de histórias (HU12-HU14), de épicos (HU15-HU16) e do vínculo entre eles (HU17).
 # ======================================================================
 class PriorizacaoTests(TestCase):
@@ -707,7 +707,7 @@ class HistoriaEpicoViewsTests(TestCase):
 
 
 # ======================================================================
-# ADICIONADO: testes do CRUD de critérios de aceitação (requisitos 12 e 13; HU12 critério 3
+# Testes do CRUD de critérios de aceitação (requisitos 12 e 13; HU12 critério 3
 # e HU13).
 # ======================================================================
 class CriterioAceitacaoTests(TestCase):
@@ -789,3 +789,148 @@ class CriterioAceitacaoTests(TestCase):
             titulo="Outra", product_backlog=self.historia.product_backlog, papel="a", acao="b", beneficio="c")
         c = CriterioAceitacao.objects.create(historia_usuario=outra, **self.criterio())
         self.assertEqual(self.client.get(self.url("criterio_editar", c.pk)).status_code, 404)
+
+
+# ======================================================================
+# Testes do CRUD de Sprint Backlogs (requisito 6; HU09 e HU10).
+# ======================================================================
+class SprintBacklogViewsTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("gil", email="gil@exemplo.com", password="Senha-forte-123")
+        self.membro = User.objects.create_user("hel", email="hel@exemplo.com", password="Senha-forte-123")
+        self.estranho = User.objects.create_user("ivo", email="ivo@exemplo.com", password="Senha-forte-123")
+        self.projeto = Projeto.objects.create(nome="Projeto S", dono=self.dono)
+        self.projeto.membros.add(self.membro)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def dados(self, **extra):
+        d = {"nome": "Sprint 1", "data_inicio": "2026-11-09", "data_fim": "2026-11-20"}
+        d.update(extra)
+        return d
+
+    def test_hu09_criar_sprint_vazio(self):
+        resp = self.client.post(self.url("sprint_criar"), self.dados())
+        sprint = SprintBacklog.objects.get()
+        self.assertRedirects(resp, self.url("sprint_detalhe", sprint.pk))
+        self.assertEqual(sprint.projeto, self.projeto)
+        self.assertEqual(sprint.historias.count(), 0)
+        self.assertContains(self.client.get(self.url("sprint_lista")), "Sprint 1")
+
+    def test_hu09_data_fim_antes_do_inicio(self):
+        resp = self.client.post(self.url("sprint_criar"), self.dados(data_fim="2026-11-01"))
+        self.assertContains(resp, "A data de fim não pode ser anterior à data de início.")
+        self.assertFalse(SprintBacklog.objects.exists())
+
+    def test_hu09_campos_obrigatorios(self):
+        resp = self.client.post(self.url("sprint_criar"), {"nome": "", "data_inicio": "", "data_fim": ""})
+        self.assertContains(resp, "O nome do Sprint Backlog é obrigatório.")
+        self.assertContains(resp, "Informe a data de início.")
+        self.assertFalse(SprintBacklog.objects.exists())
+
+    def test_hu09_varios_sprints_no_mesmo_projeto(self):
+        self.client.post(self.url("sprint_criar"), self.dados())
+        self.client.post(self.url("sprint_criar"), self.dados(nome="Sprint 2", data_inicio="2026-11-23", data_fim="2026-12-04"))
+        self.assertEqual(self.projeto.sprint_backlogs.count(), 2)
+
+    def test_hu10_editar_sprint(self):
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, **SPRINT_PERIODO, nome="Sprint 1")
+        self.client.post(self.url("sprint_editar", sprint.pk), self.dados(nome="Sprint Um", data_fim="2026-11-27"))
+        sprint.refresh_from_db()
+        self.assertEqual(sprint.nome, "Sprint Um")
+        self.assertEqual(str(sprint.data_fim), "2026-11-27")
+
+    def test_hu10_excluir_sprint_devolve_historias_ao_product_backlog(self):
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1", **SPRINT_PERIODO)
+        h = HistoriaUsuario.objects.create(titulo="No sprint", sprint_backlog=sprint, papel="a", acao="b", beneficio="c")
+        self.client.get(self.url("sprint_excluir", sprint.pk))  # tela de confirmação não apaga
+        self.assertTrue(SprintBacklog.objects.filter(pk=sprint.pk).exists())
+        self.assertRedirects(self.client.post(self.url("sprint_excluir", sprint.pk)), self.url("sprint_lista"))
+        h.refresh_from_db()
+        self.assertFalse(SprintBacklog.objects.exists())
+        self.assertEqual(h.product_backlog, self.backlog)
+        self.assertIsNone(h.sprint_backlog)
+
+    def test_detalhe_mostra_historias_e_total_de_pontos(self):
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1", **SPRINT_PERIODO)
+        HistoriaUsuario.objects.create(titulo="A", sprint_backlog=sprint, papel="a", acao="b", beneficio="c", story_points=5)
+        HistoriaUsuario.objects.create(titulo="B", sprint_backlog=sprint, papel="a", acao="b", beneficio="c", story_points=8)
+        resp = self.client.get(self.url("sprint_detalhe", sprint.pk))
+        self.assertContains(resp, "13 Story Points")
+
+    def test_membro_opera_e_estranho_nao_acessa(self):
+        self.client.force_login(self.membro)
+        self.client.post(self.url("sprint_criar"), self.dados())
+        sprint = SprintBacklog.objects.get()
+        self.client.force_login(self.estranho)
+        self.assertEqual(self.client.get(self.url("sprint_lista")).status_code, 404)
+        self.assertEqual(self.client.post(self.url("sprint_excluir", sprint.pk)).status_code, 404)
+        self.assertTrue(SprintBacklog.objects.exists())
+
+
+# ======================================================================
+# Testes de mover história entre backlogs (requisito 8; HU11).
+# ======================================================================
+class MoverHistoriaTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("jade", email="jade@exemplo.com", password="Senha-forte-123")
+        self.estranho = User.objects.create_user("kai", email="kai@exemplo.com", password="Senha-forte-123")
+        self.projeto = Projeto.objects.create(nome="Projeto M", dono=self.dono)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.sprint1 = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1", **SPRINT_PERIODO)
+        self.sprint2 = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 2", **SPRINT_PERIODO)
+        self.historia = HistoriaUsuario.objects.create(
+            titulo="Mover", product_backlog=self.backlog, papel="a", acao="b", beneficio="c")
+        self.client.force_login(self.dono)
+
+    def mover(self, destino, historia=None):
+        h = historia or self.historia
+        return self.client.post(reverse("historia_mover", args=[self.projeto.pk, h.pk]), {"destino": destino})
+
+    def test_hu11_product_backlog_para_sprint(self):
+        self.mover(f"sprint-{self.sprint1.pk}")
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.sprint_backlog, self.sprint1)
+        self.assertIsNone(self.historia.product_backlog)
+        self.assertNotContains(self.client.get(reverse("product_backlog", args=[self.projeto.pk])), ">Mover<")
+        self.assertContains(self.client.get(reverse("sprint_detalhe", args=[self.projeto.pk, self.sprint1.pk])), "Mover")
+
+    def test_hu11_sprint_de_volta_para_product_backlog(self):
+        self.mover(f"sprint-{self.sprint1.pk}")
+        self.mover("product-backlog")
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.product_backlog, self.backlog)
+        self.assertIsNone(self.historia.sprint_backlog)
+
+    def test_hu11_de_um_sprint_para_outro(self):
+        self.mover(f"sprint-{self.sprint1.pk}")
+        self.mover(f"sprint-{self.sprint2.pk}")
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.sprint_backlog, self.sprint2)
+        self.assertFalse(self.sprint1.historias.exists())
+
+    def test_destino_atual_nao_e_oferecido(self):
+        resp = self.client.get(reverse("historia_detalhe", args=[self.projeto.pk, self.historia.pk]))
+        self.assertNotContains(resp, 'value="product-backlog"')
+        self.assertContains(resp, f'value="sprint-{self.sprint1.pk}"')
+
+    def test_sprint_de_outro_projeto_e_recusado(self):
+        outro = Projeto.objects.create(nome="Outro", dono=self.estranho)
+        sprint_outro = SprintBacklog.objects.create(projeto=outro, nome="Sprint X", **SPRINT_PERIODO)
+        self.mover(f"sprint-{sprint_outro.pk}")
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.product_backlog, self.backlog)
+        self.assertIsNone(self.historia.sprint_backlog)
+
+    def test_mover_exige_post(self):
+        resp = self.client.get(reverse("historia_mover", args=[self.projeto.pk, self.historia.pk]))
+        self.assertEqual(resp.status_code, 405)
+
+    def test_estranho_nao_move(self):
+        self.client.force_login(self.estranho)
+        self.assertEqual(self.mover(f"sprint-{self.sprint1.pk}").status_code, 404)
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.product_backlog, self.backlog)

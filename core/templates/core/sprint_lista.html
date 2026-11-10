@@ -1,0 +1,22 @@
+{% extends "core/base.html" %}
+{% comment %} Lista de Sprint Backlogs do projeto (requisito 6; HU09, HU10) {% endcomment %}
+{% block titulo %}Sprints – {{ projeto.nome }}{% endblock %}
+{% block conteudo %}
+<h2>Sprint Backlogs</h2>
+<a class="botao" href="{% url 'sprint_criar' projeto.id %}">Novo Sprint Backlog</a>
+{% if sprints %}
+<table>
+  <tr><th>Nome</th><th>Início</th><th>Fim</th><th>Histórias</th></tr>
+  {% for s in sprints %}
+  <tr>
+    <td><a href="{% url 'sprint_detalhe' projeto.id s.id %}">{{ s.nome }}</a></td>
+    <td>{{ s.data_inicio|date:"d/m/Y" }}</td>
+    <td>{{ s.data_fim|date:"d/m/Y" }}</td>
+    <td>{{ s.historias.all|length }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="vazio">Este projeto ainda não tem Sprint Backlogs.</p>
+{% endif %}
+{% endblock %}

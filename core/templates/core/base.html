@@ -1,4 +1,4 @@
-{# ADICIONADO: layout base das telas de histórias e épicos #}
+{# Layout base das telas de histórias e épicos #}
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -16,6 +16,7 @@
     .botao.secundario { background: #777; }
     .mensagem { padding: 8px 12px; background: #e6f0e6; border-left: 4px solid #2e7d32; margin: 12px 0; }
     .erro, .errorlist { color: #b00020; }
+    .mensagem.erro-msg { background: #fdecee; border-left-color: #b00020; }
     form p { margin: 10px 0; }
     form label { display: block; font-weight: 600; }
     input[type=text], input[type=number], textarea, select { width: 100%; max-width: 520px; padding: 6px; box-sizing: border-box; }
@@ -31,11 +32,13 @@
       <a href="{% url 'inicio' %}">Meus projetos</a>
       <a href="{% url 'detalhe_projeto' projeto.id %}">Projeto</a>
       {% if projeto.product_backlog %}<a href="{% url 'product_backlog' projeto.id %}">Product Backlog</a>{% endif %}
+      <a href="{% url 'sprint_lista' projeto.id %}">Sprints</a>
       <a href="{% url 'historia_lista' projeto.id %}">Histórias</a>
       <a href="{% url 'epico_lista' projeto.id %}">Épicos</a>
     </nav>
   </header>
-  {% for m in messages %}<div class="mensagem">{{ m }}</div>{% endfor %}
+  {% comment %} Mensagens de erro (ex.: ao mover história) aparecem em vermelho {% endcomment %}
+  {% for m in messages %}<div class="mensagem{% if m.tags == 'error' %} erro-msg{% endif %}">{{ m }}</div>{% endfor %}
   <main>{% block conteudo %}{% endblock %}</main>
 </body>
 </html>
