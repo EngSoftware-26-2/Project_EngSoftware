@@ -3,7 +3,7 @@ Um campo de formulário: rótulo, campo, erros logo embaixo (em vermelho) e a di
 Uso: {% include "core/_campo.html" with campo=form.nome %}
 {% endcomment %}
 <div class="campo{% if campo.errors %} campo-com-erro{% endif %}">
-  {{ campo.label_tag }}
+  <label for="{{ campo.id_for_label }}">{{ campo.label }}</label>
   {{ campo }}
   {% for erro in campo.errors %}<p class="erro-campo" role="alert">{{ erro }}</p>{% endfor %}
   {% if campo.help_text %}<small class="dica" id="{{ campo.auto_id }}_helptext">{{ campo.help_text }}</small>{% endif %}

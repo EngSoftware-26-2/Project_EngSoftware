@@ -3,12 +3,13 @@
 {% block conteudo %}
 <div class="cartao cartao-estreito">
   <h1>Criar conta</h1>
+  <p class="subtitulo">Preencha seus dados para começar a usar o sistema.</p>
   <form method="post" novalidate>
     {% csrf_token %}
     {% include "core/_erros_gerais.html" %}
     {% for campo in form %}{% include "core/_campo.html" %}{% endfor %}
     <button type="submit">Cadastrar</button>
   </form>
-  <p>Já possui conta? <a href="{% url 'login' %}">Entrar</a></p>
+  <p class="rodape">Já possui conta? <a href="{% url 'login' %}">Entrar</a></p>
 </div>
 {% endblock %}

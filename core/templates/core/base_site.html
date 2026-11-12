@@ -6,53 +6,77 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block titulo %}Gestão de Requisitos{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    :root { --azul: #1F3864; --azul-claro: #2E5597; --vermelho: #b00020; --cinza: #666; --borda: #ddd; --fundo: #f5f7fa; }
+    :root {
+      --azul: #1F3864; --azul-claro: #2E5597; --azul-suave: #e8eef8;
+      --vermelho: #c62828; --vermelho-suave: #fdecec; --verde: #2e7d32; --verde-suave: #e8f5e9;
+      --texto: #1f2937; --cinza: #6b7280; --borda: #e2e6ee; --borda-campo: #cbd2dd; --fundo: #f3f5f9;
+      --raio: 10px; --sombra: 0 1px 2px rgba(16,24,40,.05), 0 4px 16px rgba(16,24,40,.06);
+    }
     * { box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; color: #1a1a1a; background: var(--fundo); line-height: 1.45; }
+    body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 15px; margin: 0; color: var(--texto); background: var(--fundo); line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    h1, h2, h3 { line-height: 1.25; color: var(--azul); }
+    h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -.01em; }
+    h2 { font-size: 1.25rem; font-weight: 600; }
     a { color: var(--azul-claro); }
-    .topo { background: var(--azul); color: #fff; }
-    .topo-conteudo { max-width: 960px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-    .topo a { color: #fff; text-decoration: none; font-weight: 600; }
+    a:hover { color: var(--azul); }
+    .topo { background: var(--azul); color: #fff; box-shadow: 0 2px 8px rgba(16,24,40,.15); }
+    .topo-conteudo { max-width: 960px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .topo a { color: #fff; text-decoration: none; font-weight: 700; font-size: 1.05rem; letter-spacing: .01em; display: inline-flex; align-items: center; gap: 10px; }
+    .topo .marca { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; background: #fff; color: var(--azul); font-size: .8rem; font-weight: 700; }
     .topo .usuario { display: flex; align-items: center; gap: 12px; font-size: .95em; }
     .topo form { margin: 0; }
-    .topo button { background: transparent; border: 1px solid rgba(255,255,255,.6); padding: 4px 10px; }
-    .pagina { max-width: 960px; margin: 0 auto; padding: 16px; }
-    .cabecalho h1 { margin: 8px 0 4px; color: var(--azul); }
-    nav.abas { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 0 12px; border-bottom: 1px solid var(--borda); margin-bottom: 8px; }
+    .topo button { background: transparent; border: 1px solid rgba(255,255,255,.55); padding: 5px 12px; }
+    .topo button:hover { background: rgba(255,255,255,.12); }
+    .pagina { max-width: 960px; margin: 0 auto; padding: 20px 16px 40px; }
+    .cabecalho h1 { margin: 8px 0 4px; }
+    nav.abas { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 8px 0 12px; border-bottom: 1px solid var(--borda); margin-bottom: 8px; }
     nav.abas a { text-decoration: none; font-weight: 600; }
-    .cartao { background: #fff; border: 1px solid var(--borda); border-radius: 6px; padding: 12px 16px; margin: 12px 0; }
-    .cartao-estreito { max-width: 420px; margin: 40px auto; }
+    .cartao { background: #fff; border: 1px solid var(--borda); border-radius: var(--raio); padding: 16px 20px; margin: 14px 0; box-shadow: var(--sombra); }
+    .cartao-estreito { max-width: 440px; margin: 48px auto; padding: 32px 32px 24px; }
+    .cartao-estreito h1 { margin: 0 0 4px; }
+    .cartao-estreito .subtitulo { margin: 0 0 24px; color: var(--cinza); }
+    .cartao-estreito button[type=submit] { width: 100%; padding: 11px 16px; margin-top: 6px; }
+    .cartao-estreito .rodape { margin: 20px 0 0; padding-top: 16px; border-top: 1px solid var(--borda); text-align: center; color: var(--cinza); }
     .acoes { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
     .acoes form { margin: 0; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; background: #fff; }
-    th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--borda); vertical-align: top; }
-    th { background: var(--azul); color: #fff; }
-    button, .botao { display: inline-block; padding: 6px 12px; background: var(--azul); color: #fff; text-decoration: none; border: 0; border-radius: 4px; cursor: pointer; font: inherit; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; background: #fff; border: 1px solid var(--borda); border-radius: var(--raio); overflow: hidden; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--borda); vertical-align: top; }
+    th { background: var(--azul-suave); color: var(--azul); font-weight: 600; font-size: .9em; }
+    tr:last-child td { border-bottom: 0; }
+    button, .botao { display: inline-block; padding: 8px 14px; background: var(--azul); color: #fff; text-decoration: none; border: 0; border-radius: 8px; cursor: pointer; font: inherit; font-weight: 600; transition: background .15s; }
+    button:hover, .botao:hover { background: var(--azul-claro); color: #fff; }
     button.perigo, .botao.perigo { background: var(--vermelho); }
-    button.secundario, .botao.secundario { background: #777; }
-    .mensagem { padding: 8px 12px; background: #e6f0e6; border-left: 4px solid #2e7d32; margin: 12px 0; }
-    .mensagem.erro-msg { background: #fdecee; border-left-color: var(--vermelho); }
+    button.secundario, .botao.secundario { background: #fff; color: var(--azul); border: 1px solid var(--borda-campo); }
+    button.secundario:hover, .botao.secundario:hover { background: var(--azul-suave); color: var(--azul); }
+    .mensagem { padding: 10px 14px; background: var(--verde-suave); border-left: 4px solid var(--verde); border-radius: 6px; margin: 12px 0; }
+    .mensagem.erro-msg { background: var(--vermelho-suave); border-left-color: var(--vermelho); color: #8e1c1c; }
     .erro, .errorlist { color: var(--vermelho); }
     .errorlist { padding-left: 18px; margin: 4px 0; }
     form p { margin: 10px 0; }
     form label { display: block; font-weight: 600; }
-    .campo { margin: 0 0 14px; }
-    .campo label { margin-bottom: 4px; }
-    .dica { display: block; margin-top: 4px; color: #666; font-size: .85em; }
-    .erro-campo { margin: 4px 0 0; color: var(--vermelho); font-size: .9em; }
-    .campo.campo-com-erro input, .campo.campo-com-erro select, .campo.campo-com-erro textarea { border: 2px solid var(--vermelho); border-color: var(--vermelho); background: #fffafa; }
-    input[type=text], input[type=email], input[type=password], input[type=number], input[type=date], textarea, select { width: 100%; max-width: 520px; padding: 6px; border: 1px solid #bbb; border-radius: 4px; font: inherit; }
+    .campo { margin: 0 0 18px; }
+    .campo label { margin-bottom: 6px; font-size: .92em; }
+    .dica { display: block; margin-top: 6px; color: var(--cinza); font-size: .82em; }
+    .erro-campo { margin: 6px 0 0; color: var(--vermelho); font-size: .85em; font-weight: 500; }
+    .erro-campo::before { content: "• "; }
+    input[type=text], input[type=email], input[type=password], input[type=number], input[type=date], textarea, select { width: 100%; max-width: 520px; padding: 10px 12px; border: 1px solid var(--borda-campo); border-radius: 8px; font: inherit; background: #fff; color: var(--texto); transition: border-color .15s, box-shadow .15s; }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: var(--azul-claro); box-shadow: 0 0 0 3px rgba(46,85,151,.18); }
+    .campo.campo-com-erro input, .campo.campo-com-erro select, .campo.campo-com-erro textarea { border-color: var(--vermelho); background: #fffafa; }
+    .campo.campo-com-erro input:focus, .campo.campo-com-erro textarea:focus, .campo.campo-com-erro select:focus { box-shadow: 0 0 0 3px rgba(198,40,40,.15); }
     .helptext { display: block; color: var(--cinza); font-size: .85em; }
-    fieldset { border: 1px solid var(--borda); margin: 16px 0; padding: 8px 16px; background: #fff; }
+    fieldset { border: 1px solid var(--borda); border-radius: var(--raio); margin: 16px 0; padding: 8px 16px; background: #fff; }
     .vazio { color: var(--cinza); font-style: italic; }
-    .etiqueta { display: inline-block; padding: 1px 8px; border-radius: 10px; background: #e3e9f4; color: var(--azul); font-size: .85em; font-weight: 600; }
+    .etiqueta { display: inline-block; padding: 2px 10px; border-radius: 999px; background: var(--azul-suave); color: var(--azul); font-size: .82em; font-weight: 600; }
   </style>
 </head>
 <body>
   <div class="topo">
     <div class="topo-conteudo">
-      <a href="{% if request.user.is_authenticated %}{% url 'inicio' %}{% else %}{% url 'login' %}{% endif %}">Gestão de Requisitos</a>
+      <a href="{% if request.user.is_authenticated %}{% url 'inicio' %}{% else %}{% url 'login' %}{% endif %}"><span class="marca" aria-hidden="true">GR</span>Gestão de Requisitos</a>
       {% if request.user.is_authenticated %}
       <div class="usuario">
         <span>{{ request.user.first_name|default:request.user.email }}</span>
