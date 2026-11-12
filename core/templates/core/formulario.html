@@ -1,13 +1,18 @@
 {% extends "core/base.html" %}
+{% comment %} Formulário simples usado para editar o projeto (HU06) e criar/editar o Product
+   Backlog (HU08), com dica embaixo de cada campo e erro logo abaixo dele. {% endcomment %}
 {% block titulo %}{{ titulo }}{% endblock %}
 {% block conteudo %}
-<h2>{{ titulo }}</h2>
-<form method="post">
-  {% csrf_token %}
-  {{ form.as_p }}
-  <div class="acoes">
-    <button type="submit">Salvar</button>
-    <a class="botao secundario" href="{% url 'detalhe_projeto' projeto.pk %}">Voltar ao projeto</a>
-  </div>
-</form>
+<div class="cartao cartao-medio">
+  <h2>{{ titulo }}</h2>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% include "core/_erros_gerais.html" %}
+    {% for campo in form %}{% include "core/_campo.html" %}{% endfor %}
+    <div class="botoes">
+      <button type="submit">Salvar</button>
+      <a class="botao secundario" href="{% url 'detalhe_projeto' projeto.pk %}">Voltar ao projeto</a>
+    </div>
+  </form>
+</div>
 {% endblock %}

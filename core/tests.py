@@ -1636,3 +1636,45 @@ class EpicoAtalhosTests(TestCase):
         self.assertTrue(response.context["form"].errors.get("historia_usuario"))
         c.refresh_from_db()
         self.assertEqual(c.historia_usuario, grande)
+
+
+# Dicas embaixo dos campos e erros logo abaixo do próprio campo nos formulários de projeto,
+# épico, membros e Product Backlog
+class FormulariosDicasTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.projeto = Projeto.objects.create(nome="Projeto F", dono=self.dono)
+        ProductBacklog.objects.create(projeto=self.projeto)
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def test_dicas_aparecem(self):
+        casos = [
+            (reverse("criar_projeto"), "Ex.: Sistema de Biblioteca"),
+            (self.url("editar_projeto"), "Ex.: Sistema de Biblioteca"),
+            (self.url("epico_criar"), "Ex.: Empréstimos"),
+            (self.url("membros_projeto"), "precisa já ter uma conta"),
+            (self.url("editar_product_backlog"), "objetivo do produto"),
+        ]
+        for endereco, dica in casos:
+            with self.subTest(endereco=endereco):
+                response = self.client.get(endereco)
+                self.assertContains(response, dica)
+                self.assertContains(response, "novalidate")
+
+    def test_erro_embaixo_do_campo_no_projeto(self):
+        html = self.client.post(reverse("criar_projeto"), {"nome": "", "descricao": "x"}).content.decode()
+        self.assertTrue(html.index('id="id_nome"') < html.index("O nome do projeto é obrigatório.") < html.index('id="id_descricao"'))
+
+    def test_erro_embaixo_do_campo_no_epico(self):
+        html = self.client.post(self.url("epico_criar"), {"titulo": "", "descricao": ""}).content.decode()
+        self.assertTrue(html.index('id="id_titulo"') < html.index("O nome do épico é obrigatório.") < html.index('id="id_descricao"'))
+
+    def test_erro_embaixo_do_campo_nos_membros(self):
+        response = self.client.post(self.url("membros_projeto"), {"email": "ninguem@exemplo.com"})
+        html = response.content.decode()
+        self.assertIn("campo-com-erro", html)
+        self.assertTrue(html.index('id="id_email"') < html.index("Nenhuma conta com este e-mail."))
+        self.assertContains(self.client.post(self.url("membros_projeto"), {"email": "x"}), "Informe um e-mail válido.")

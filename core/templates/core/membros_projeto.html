@@ -11,9 +11,10 @@
 {% if projeto.dono_id == request.user.id %}
 <div class="cartao">
   <h3>Adicionar membro</h3>
-  <form method="post">
+  <form method="post" novalidate class="form-membro">
     {% csrf_token %}
-    {{ form.as_p }}
+    {% include "core/_erros_gerais.html" %}
+    {% include "core/_campo.html" with campo=form.email %}
     <button type="submit">Adicionar membro</button>
   </form>
 </div>

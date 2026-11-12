@@ -138,6 +138,16 @@ class ProjetoForm(forms.ModelForm):
             )
         }
 
+        help_texts = {
+            "nome": "Ex.: Sistema de Biblioteca",
+            "descricao": "Opcional. Em poucas linhas, o que o projeto vai entregar.",
+        }
+
+        error_messages = {
+            "nome": {"required": "O nome do projeto é obrigatório.",
+                     "max_length": "O nome do projeto pode ter no máximo 200 caracteres."},
+        }
+
 # HU22 - Adicionar membros ao projeto
 
 class AdicionarMembroForm(forms.Form):
@@ -146,7 +156,10 @@ class AdicionarMembroForm(forms.Form):
         max_length=150,
         widget=forms.EmailInput(
             attrs={"placeholder": "usuario@exemplo.com"}
-        )
+        ),
+        help_text="A pessoa precisa já ter uma conta no sistema com este e-mail.",
+        error_messages={"required": "Informe o e-mail do membro.",
+                        "invalid": "Informe um e-mail válido."},
     )
 
     def clean_email(self):
@@ -159,6 +172,8 @@ class ProductBacklogForm(forms.ModelForm):
         model = ProductBacklog
         fields = ["descricao"]
         labels = {"descricao": "Descrição"}
+        widgets = {"descricao": forms.Textarea(attrs={"rows": 4})}
+        help_texts = {"descricao": "Opcional. Ex.: objetivo do produto e o que entra neste backlog."}
 
 
 # Formulários do CRUD de épicos (HU15, HU16; requisito 10) e de histórias de
@@ -169,6 +184,10 @@ class EpicoForm(forms.ModelForm):
         fields = ['titulo', 'descricao']
         widgets = {'descricao': forms.Textarea(attrs={'rows': 3})}
         error_messages = {'titulo': {'required': 'O nome do épico é obrigatório.'}}
+        help_texts = {
+            'titulo': 'Um tema que agrupa várias histórias. Ex.: Empréstimos',
+            'descricao': 'Opcional. O que as histórias deste épico têm em comum.',
+        }
 
 
 class HistoriaUsuarioForm(forms.ModelForm):

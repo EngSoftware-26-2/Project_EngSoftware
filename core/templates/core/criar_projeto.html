@@ -1,13 +1,18 @@
 {% extends "core/base_site.html" %}
+{% comment %} HU04 - Criar projeto, com dica embaixo de cada campo e erro logo abaixo dele. {% endcomment %}
 {% block titulo %}Criar Projeto{% endblock %}
-{% block cabecalho %}<div class="cabecalho"><h1>Criar Novo Projeto</h1></div>{% endblock %}
 {% block conteudo %}
-<form method="post">
-  {% csrf_token %}
-  {{ form.as_p }}
-  <div class="acoes">
-    <button type="submit">Criar Projeto</button>
-    <a class="botao secundario" href="{% url 'inicio' %}">Voltar</a>
-  </div>
-</form>
+<div class="cartao cartao-medio">
+  <h2>Criar Novo Projeto</h2>
+  <p class="sub">Você será o dono do projeto e poderá adicionar membros depois.</p>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% include "core/_erros_gerais.html" %}
+    {% for campo in form %}{% include "core/_campo.html" %}{% endfor %}
+    <div class="botoes">
+      <button type="submit">Criar Projeto</button>
+      <a class="botao secundario" href="{% url 'inicio' %}">Voltar</a>
+    </div>
+  </form>
+</div>
 {% endblock %}
