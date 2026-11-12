@@ -1,30 +1,66 @@
 {% extends "core/base.html" %}
-{% block titulo %}Product Backlog{% endblock %}
+{% load core_extras %}
+{% comment %} Product Backlog (requisito 5; HU08): histórias em ordem de prioridade (MoSCoW e,
+   dentro de cada etiqueta, o maior RICE primeiro), com totais e o atalho "Mover para Sprint"
+   em cada linha (requisito 8; HU11). {% endcomment %}
+{% block titulo %}Product Backlog – {{ projeto.nome }}{% endblock %}
 {% block conteudo %}
-<h2>Product Backlog de {{ projeto.nome }}</h2>
-{% if backlog.descricao %}<div class="cartao"><p>{{ backlog.descricao|linebreaksbr }}</p></div>{% endif %}
-<div class="acoes">
-  <a class="botao secundario" href="{% url 'editar_product_backlog' projeto.pk %}">Editar Product Backlog</a>
-  <a class="botao perigo" href="{% url 'excluir_product_backlog' projeto.pk %}">Excluir Product Backlog</a>
+<div class="linha-titulo">
+  <div>
+    <h2>Product Backlog</h2>
+    {% if backlog.descricao %}<p class="sub">{{ backlog.descricao|linebreaksbr }}</p>{% endif %}
+  </div>
+  <div class="acoes">
+    <a class="botao" href="{% url 'historia_criar' projeto.pk %}">Nova história</a>
+    <a class="botao secundario" href="{% url 'editar_product_backlog' projeto.pk %}">Editar Product Backlog</a>
+    <a class="botao secundario" href="{% url 'excluir_product_backlog' projeto.pk %}">Excluir Product Backlog</a>
+  </div>
 </div>
-<h3>Histórias</h3>
-{% comment %} Atalho para criar história (HU12) {% endcomment %}
-<div class="acoes"><a class="botao" href="{% url 'historia_criar' projeto.pk %}">Nova história</a></div>
-<table>
-  <thead><tr><th>Título</th><th>Story Points</th><th>MoSCoW</th><th>RICE</th><th>Épico</th></tr></thead>
+
+{% if historias %}
+<div class="totais">
+  <span><strong>{{ historias|length }}</strong> história{{ historias|length|pluralize }}</span>
+  <span><strong>{{ total_pontos }}</strong> Story Points{% if sem_estimativa %} <small class="sub">({{ sem_estimativa }} sem estimativa)</small>{% endif %}</span>
+  <span class="totais-moscow">{% for codigo, nome, qtd in contagem_moscow %}<span class="pill moscow-{{ codigo }}">{{ nome }}: {{ qtd }}</span>{% endfor %}</span>
+</div>
+<p class="sub ordem-explicada">Em ordem de prioridade: primeiro pelo MoSCoW (Must, Should, Could, Won't) e, dentro de cada etiqueta, pelo maior score RICE.</p>
+
+<table class="tabela-backlog">
+  <thead><tr><th>#</th><th>História</th><th>Story Points</th><th>MoSCoW</th><th>RICE</th><th>Responsável</th><th>Mover para Sprint</th></tr></thead>
   <tbody>
-  {% for historia in historias %}
-  <tr>
-    <td><a href="{% url 'historia_detalhe' projeto.pk historia.pk %}">{{ historia.titulo }}</a></td>
-    <td>{{ historia.story_points_display }}</td>
-    <td>{{ historia.get_moscow_display|default:"Sem etiqueta" }}</td>
-    <td>{{ historia.rice_display }}</td>
-    <td>{{ historia.epico.titulo|default:"Sem épico" }}</td>
+  {% for h in historias %}
+  <tr{% if h.moscow == "W" %} class="linha-wont"{% endif %}>
+    <td class="sub">{{ forloop.counter }}</td>
+    <td>
+      <a href="{% url 'historia_detalhe' projeto.pk h.pk %}">{{ h.titulo }}</a>
+      {% if h.epico %}<br><span class="pill">{{ h.epico.titulo }}</span>{% endif %}
+    </td>
+    <td class="nowrap">{{ h.story_points_display }}</td>
+    <td>{% if h.moscow %}<span class="pill moscow-{{ h.moscow }}">{{ h.get_moscow_display }}</span>{% else %}<span class="sub">Sem etiqueta</span>{% endif %}</td>
+    <td class="nowrap">{% if h.rice_score is None %}<span class="sub">{{ h.rice_display }}</span>{% else %}<strong>{{ h.rice_display }}</strong>{% endif %}</td>
+    <td>{% if h.responsavel %}<span class="responsavel"><span class="avatar">{{ h.responsavel|iniciais }}</span> {{ h.responsavel.first_name|default:h.responsavel.email }}</span>{% else %}<span class="sub">—</span>{% endif %}</td>
+    <td>
+      {% if sprints_abertos %}
+      <form class="mover-linha" method="post" action="{% url 'historia_mover' projeto.pk h.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="voltar" value="product_backlog">
+        <select name="destino" aria-label="Sprint de destino de {{ h.titulo }}">
+          {% for s in sprints_abertos %}<option value="sprint-{{ s.pk }}" title="{{ s.status_nome }}">{{ s.nome }}{% if s.status == "planejado" %} (planejado){% endif %}</option>{% endfor %}
+        </select>
+        <button type="submit">Mover</button>
+      </form>
+      {% else %}<span class="sub">Nenhum Sprint aberto</span>{% endif %}
+    </td>
   </tr>
-  {% empty %}
-  <tr><td colspan="5">O Product Backlog está vazio.</td></tr>
   {% endfor %}
   </tbody>
 </table>
-<div class="acoes"><a class="botao secundario" href="{% url 'detalhe_projeto' projeto.pk %}">Voltar ao projeto</a></div>
+{% if not sprints_abertos %}<p class="sub">Para mover histórias, <a href="{% url 'sprint_criar' projeto.pk %}">crie um Sprint Backlog</a>.</p>{% endif %}
+{% else %}
+<div class="cartao estado-vazio">
+  <h2>O Product Backlog está vazio.</h2>
+  <p>Crie a primeira história de usuário do projeto. Ela nasce aqui e depois pode ser movida para um Sprint.</p>
+  <a class="botao" href="{% url 'historia_criar' projeto.pk %}">Nova história</a>
+</div>
+{% endif %}
 {% endblock %}

@@ -310,11 +310,33 @@ def excluir_projeto(request, pk):
 def product_backlog(request, pk):
     projeto = projeto_acessivel(request.user, pk)
     backlog = get_object_or_404(ProductBacklog, projeto=projeto)
+    historias = list(backlog.historias.select_related("epico", "responsavel").filter(
+        sprint_backlog__isnull=True,
+    ).filter(Q(epico__isnull=True) | Q(epico__projeto=projeto)))
+    # Ordem de prioridade: primeiro o MoSCoW (Must, Should, Could, Won't, sem etiqueta) e,
+    # dentro de cada etiqueta, o maior score RICE primeiro. RICE incompleto ou não calculável
+    # fica depois dos calculados. Empate: ordem alfabética.
+    ordem_moscow = {"M": 0, "S": 1, "C": 2, "W": 3, "": 4}
+    historias.sort(key=lambda h: (
+        ordem_moscow.get(h.moscow, 4),
+        h.rice_score is None,
+        -(h.rice_score or 0),
+        h.titulo.lower(),
+    ))
+    # Sprints que ainda recebem histórias (planejados ou em andamento), para o "Mover para".
+    sprints_abertos = [s for s in projeto.sprint_backlogs.order_by("data_inicio", "pk") if not s.fechado]
+    por_moscow = {codigo: 0 for codigo in ordem_moscow}
+    for h in historias:
+        por_moscow[h.moscow] = por_moscow.get(h.moscow, 0) + 1
     return render(request, "core/product_backlog.html", {
-        "projeto": projeto, "backlog": backlog,
-        "historias": backlog.historias.select_related("epico").filter(
-            sprint_backlog__isnull=True,
-        ).filter(Q(epico__isnull=True) | Q(epico__projeto=projeto)).order_by("pk"),
+        "projeto": projeto, "backlog": backlog, "historias": historias,
+        "sprints_abertos": sprints_abertos,
+        "total_pontos": sum(h.story_points or 0 for h in historias),
+        "sem_estimativa": sum(1 for h in historias if h.story_points is None),
+        "contagem_moscow": [
+            ("M", "Must", por_moscow["M"]), ("S", "Should", por_moscow["S"]),
+            ("C", "Could", por_moscow["C"]), ("W", "Won't", por_moscow["W"]),
+        ],
     })
 
 
@@ -792,6 +814,9 @@ def historia_mover(request, pk, historia_id):
     else:
         for erro in form.errors.get("destino", []):
             messages.error(request, erro)
+    # O "Mover para Sprint" da lista do Product Backlog volta para a própria lista.
+    if request.POST.get("voltar") == "product_backlog":
+        return redirect("product_backlog", pk=projeto.pk)
     return redirect("historia_detalhe", pk=projeto.pk, historia_id=historia.pk)
 
 

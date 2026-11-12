@@ -1377,3 +1377,75 @@ class SprintRegrasTests(TestCase):
         self.assertEqual(self.client.get(self.url("historia_detalhe", feita.pk)).context["form_mover"].fields["destino"].choices, [])
 
         self.assertRedirects(self.client.get(self.url("sprint_editar", fechado.pk)), self.url("sprint_detalhe", fechado.pk))
+
+
+# Product Backlog em ordem de prioridade, com totais e "Mover para Sprint" na lista
+class ProductBacklogPrioridadeTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.projeto = Projeto.objects.create(nome="Projeto P", dono=self.dono)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.client.force_login(self.dono)
+
+    def h(self, titulo, moscow="", rice=None, pontos=None):
+        # rice=(reach, impact, confidence, effort)
+        campos = dict(zip(["reach", "impact", "confidence", "effort"], rice)) if rice else {}
+        return HistoriaUsuario.objects.create(titulo=titulo, product_backlog=self.backlog, papel="a", acao="b",
+                                              beneficio="c", moscow=moscow, story_points=pontos, **campos)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def titulos(self):
+        return [h.titulo for h in self.client.get(self.url("product_backlog")).context["historias"]]
+
+    def test_ordem_moscow_e_depois_rice(self):
+        self.h("Sem etiqueta", "", (100, 1, 100, 1))
+        self.h("Won't", "W", (100, 1, 100, 1))
+        self.h("Could", "C")
+        self.h("Must RICE baixo", "M", (10, 1, 50, 5))       # 100
+        self.h("Must RICE alto", "M", (500, 2, 80, 5))       # 16000
+        self.h("Must incompleto", "M")
+        self.h("Should", "S", (1, 1, 50, 1))
+        self.assertEqual(self.titulos(), [
+            "Must RICE alto", "Must RICE baixo", "Must incompleto", "Should", "Could", "Won't", "Sem etiqueta",
+        ])
+
+    def test_rice_nao_calculavel_fica_depois_dos_calculados(self):
+        self.h("Effort zero", "M", (100, 1, 100, 0))
+        self.h("Calculado", "M", (1, 0.25, 50, 55))
+        self.assertEqual(self.titulos(), ["Calculado", "Effort zero"])
+
+    def test_totais_e_contagem_por_moscow(self):
+        self.h("A", "M", pontos=5)
+        self.h("B", "M", pontos=3)
+        self.h("C", "S")
+        response = self.client.get(self.url("product_backlog"))
+        self.assertEqual(response.context["total_pontos"], 8)
+        self.assertEqual(response.context["sem_estimativa"], 1)
+        self.assertIn(("M", "Must", 2), response.context["contagem_moscow"])
+        self.assertContains(response, "1 sem estimativa")
+
+    def test_mover_para_sprint_pela_lista_volta_para_a_lista(self):
+        historia = self.h("Mover daqui", "M")
+        aberto = SprintBacklog.objects.create(projeto=self.projeto, nome="Aberto", **SPRINT_PERIODO)
+        response = self.client.post(self.url("historia_mover", historia.pk),
+                                    {"destino": f"sprint-{aberto.pk}", "voltar": "product_backlog"})
+        self.assertRedirects(response, self.url("product_backlog"))
+        historia.refresh_from_db()
+        self.assertEqual(historia.sprint_backlog, aberto)
+        self.assertNotIn("Mover daqui", self.titulos())
+
+    def test_so_sprints_abertos_aparecem_para_mover(self):
+        self.h("Qualquer", "M")
+        hoje = date.today()
+        aberto = SprintBacklog.objects.create(projeto=self.projeto, nome="Aberto", **SPRINT_PERIODO)
+        cancelado = SprintBacklog.objects.create(projeto=self.projeto, nome="Cancelado", data_inicio=hoje,
+                                                 data_fim=hoje, cancelado=True, encerrado_em=hoje)
+        response = self.client.get(self.url("product_backlog"))
+        self.assertEqual(response.context["sprints_abertos"], [aberto])
+        self.assertNotContains(response, f'value="sprint-{cancelado.pk}"')
+
+    def test_sem_sprint_aberto_mostra_aviso(self):
+        self.h("Qualquer", "M")
+        self.assertContains(self.client.get(self.url("product_backlog")), "Nenhum Sprint aberto")

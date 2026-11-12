@@ -25,14 +25,14 @@
     a { color: var(--azul-claro); }
     a:hover { color: var(--azul); }
     .topo { background: var(--azul); color: #fff; box-shadow: 0 2px 8px rgba(16,24,40,.15); }
-    .topo-conteudo { max-width: 960px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .topo-conteudo { max-width: 1100px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
     .topo a { color: #fff; text-decoration: none; font-weight: 700; font-size: 1.05rem; letter-spacing: .01em; display: inline-flex; align-items: center; gap: 10px; }
     .topo .marca { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; background: #fff; color: var(--azul); font-size: .8rem; font-weight: 700; }
     .topo .usuario { display: flex; align-items: center; gap: 12px; font-size: .95em; }
     .topo form { margin: 0; }
     .topo button { background: transparent; border: 1px solid rgba(255,255,255,.55); padding: 5px 12px; }
     .topo button:hover { background: rgba(255,255,255,.12); }
-    .pagina { max-width: 960px; margin: 0 auto; padding: 20px 16px 40px; }
+    .pagina { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
     .cabecalho h1 { margin: 8px 0 4px; }
     nav.abas { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 8px 0 12px; border-bottom: 1px solid var(--borda); margin-bottom: 8px; }
     nav.abas a { text-decoration: none; font-weight: 600; }
@@ -141,6 +141,17 @@
     .ponto { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     .ponto-verde { background: #22a447; } .ponto-cinza { background: #9ca3af; }
     @media (max-width: 600px) { .linha-2, .resumo { grid-template-columns: 1fr; } }
+    .totais { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; background: #fff; border: 1px solid var(--borda); border-radius: var(--raio); padding: 12px 16px; box-shadow: var(--sombra); }
+    .totais strong { color: var(--azul); font-size: 1.1rem; }
+    .totais-moscow { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+    .ordem-explicada { font-size: .85em; margin: 10px 0 0; }
+    .tabela-backlog td { vertical-align: middle; }
+    .nowrap, .pill, .avatar + * { white-space: nowrap; }
+    .tabela-backlog .pill { display: inline-block; margin-top: 4px; }
+    .linha-wont td { opacity: .6; }
+    .mover-linha { display: flex; gap: 6px; margin: 0; }
+    .mover-linha select { width: auto; max-width: 190px; padding: 5px 8px; font-size: .85em; }
+    .mover-linha button { padding: 5px 10px; font-size: .82em; }
     .helptext { display: block; color: var(--cinza); font-size: .85em; }
     fieldset { border: 1px solid var(--borda); border-radius: var(--raio); margin: 16px 0; padding: 8px 16px; background: #fff; }
     .vazio { color: var(--cinza); font-style: italic; }
