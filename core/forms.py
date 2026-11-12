@@ -180,6 +180,7 @@ class HistoriaUsuarioForm(forms.ModelForm):
             'epico',
             'story_points', 'moscow',
             'reach', 'impact', 'confidence', 'effort',
+            'responsavel', 'situacao',
         ]
         error_messages = {
             'titulo': {'required': 'O título é obrigatório.'},
@@ -205,6 +206,23 @@ class HistoriaUsuarioForm(forms.ModelForm):
         self.fields['impact'].choices = [('', '---------')] + HistoriaUsuario.IMPACT_CHOICES
         self.fields['confidence'].choices = [('', '---------')] + HistoriaUsuario.CONFIDENCE_CHOICES
         self.fields['effort'].choices = [('', '---------')] + HistoriaUsuario.STORY_POINTS_CHOICES
+        # Responsável: só o dono e os membros do projeto aparecem na lista.
+        if projeto is not None:
+            participantes = User.objects.filter(
+                Q(pk=projeto.dono_id) | Q(projetos_como_membro=projeto)
+            ).distinct().order_by('first_name', 'email')
+        else:
+            participantes = User.objects.none()
+        self.fields['responsavel'].queryset = participantes
+        self.fields['responsavel'].empty_label = 'Sem responsável'
+        self.fields['responsavel'].label_from_instance = lambda u: u.first_name or u.email
+        self.fields['responsavel'].help_text = 'Dono ou membro do projeto.'
+        # A situação só faz sentido com a história em um Sprint. No Product Backlog o campo
+        # não aparece (a história fica "A fazer").
+        if self.instance.sprint_backlog_id is None:
+            del self.fields['situacao']
+        else:
+            self.fields['situacao'].help_text = 'Em que coluna do quadro do Sprint a história está.'
         # Na criação da história (HU12, critério 3), o usuário pode já escrever o
         # primeiro critério de aceitação. Os outros são adicionados depois, no detalhe da
         # história. Na edição esses campos não aparecem: os critérios têm CRUD próprio.

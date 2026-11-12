@@ -28,6 +28,10 @@
     <p>{{ form.story_points.label_tag }}{{ form.story_points }}{{ form.story_points.errors }}</p>
     <p>{{ form.moscow.label_tag }}{{ form.moscow }}{{ form.moscow.errors }}</p>
   </fieldset>
+  <fieldset><legend>{% if form.situacao %}No Sprint{% else %}Responsável{% endif %}</legend>
+    <p>{{ form.responsavel.label_tag }}{{ form.responsavel }}<span class="helptext">{{ form.responsavel.help_text }}</span>{{ form.responsavel.errors }}</p>
+    {% if form.situacao %}<p>{{ form.situacao.label_tag }}{{ form.situacao }}<span class="helptext">{{ form.situacao.help_text }}</span>{{ form.situacao.errors }}</p>{% endif %}
+  </fieldset>
   <fieldset><legend>RICE = (Reach × Impact × Confidence) / Effort</legend>
     <p>{{ form.reach.label_tag }}{{ form.reach }}{{ form.reach.errors }}</p>
     <p>{{ form.impact.label_tag }}{{ form.impact }}{{ form.impact.errors }}</p>

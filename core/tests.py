@@ -603,10 +603,10 @@ class AjustesMembrosTests(TestCase):
 # tratados sem perder registros
 class MigracaoIntegridadeTests(TransactionTestCase):
     antiga = ("core", "0003_alter_projeto_dono")
-    # De 0005 para 0007. Os testes usam o model atual (que tem Effort,
-    # critérios de aceitação e período de Sprint)
-    # depois de migrar, então o banco precisa chegar na última migration.
-    atual = ("core", "0007_criterioaceitacao_periodo_sprint")
+    # Os testes usam o model atual (que tem Effort, critérios de aceitação, período de
+    # Sprint, situação e responsável) depois de migrar, então o banco precisa chegar na
+    # última migration.
+    atual = ("core", "0008_historia_situacao_responsavel")
 
     def setUp(self):
         from django.db.migrations.executor import MigrationExecutor
@@ -1060,3 +1060,128 @@ class MoverHistoriaTests(TestCase):
         self.assertEqual(self.mover(f"sprint-{self.sprint1.pk}").status_code, 404)
         self.historia.refresh_from_db()
         self.assertEqual(self.historia.product_backlog, self.backlog)
+
+
+# Situação da história no Sprint (quadro Kanban) e responsável
+class SituacaoResponsavelTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("lia", email="lia@exemplo.com", first_name="Lia Melo")
+        self.membro = User.objects.create_user("rui", email="rui@exemplo.com", first_name="Rui Dias")
+        self.estranho = User.objects.create_user("eva", email="eva@exemplo.com", first_name="Eva Luz")
+        self.projeto = Projeto.objects.create(nome="Projeto K", dono=self.dono)
+        self.projeto.membros.add(self.membro)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1", **SPRINT_PERIODO)
+        self.historia = HistoriaUsuario.objects.create(
+            titulo="Renovar empréstimo", sprint_backlog=self.sprint, papel="a", acao="b", beneficio="c")
+        self.client.force_login(self.membro)
+
+    def mudar(self, situacao, historia=None):
+        h = historia or self.historia
+        return self.client.post(reverse("historia_situacao", args=[self.projeto.pk, h.pk]), {"situacao": situacao})
+
+    def dados_form(self, **extra):
+        dados = {"titulo": "Renovar empréstimo", "papel": "a", "acao": "b", "beneficio": "c"}
+        dados.update(extra)
+        return dados
+
+    def test_historia_nova_comeca_a_fazer_e_sem_responsavel(self):
+        self.assertEqual(self.historia.situacao, HistoriaUsuario.SITUACAO_A_FAZER)
+        self.assertIsNone(self.historia.responsavel)
+
+    def test_botoes_movem_o_cartao_entre_as_colunas(self):
+        for situacao in ["em_desenvolvimento", "concluida", "em_desenvolvimento", "a_fazer"]:
+            with self.subTest(situacao=situacao):
+                response = self.mudar(situacao)
+                self.assertRedirects(response, reverse("sprint_detalhe", args=[self.projeto.pk, self.sprint.pk]))
+                self.historia.refresh_from_db()
+                self.assertEqual(self.historia.situacao, situacao)
+
+    def test_situacao_invalida_e_recusada(self):
+        self.mudar("pronta")
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.situacao, "a_fazer")
+
+    def test_banco_recusa_situacao_fora_da_lista(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            HistoriaUsuario.objects.filter(pk=self.historia.pk).update(situacao="pronta")
+
+    def test_historia_no_product_backlog_nao_muda_de_situacao(self):
+        historia = HistoriaUsuario.objects.create(
+            titulo="No PB", product_backlog=self.backlog, papel="a", acao="b", beneficio="c")
+        self.mudar("concluida", historia)
+        historia.refresh_from_db()
+        self.assertEqual(historia.situacao, "a_fazer")
+
+    def test_quem_nao_participa_nao_move_o_cartao(self):
+        self.client.force_login(self.estranho)
+        self.assertEqual(self.mudar("concluida").status_code, 404)
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.situacao, "a_fazer")
+
+    def test_voltar_para_o_product_backlog_reinicia_a_situacao(self):
+        self.mudar("concluida")
+        self.client.post(reverse("historia_mover", args=[self.projeto.pk, self.historia.pk]), {"destino": "product-backlog"})
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.product_backlog, self.backlog)
+        self.assertEqual(self.historia.situacao, "a_fazer")
+
+    def test_excluir_sprint_reinicia_a_situacao(self):
+        self.mudar("em_desenvolvimento")
+        self.sprint.delete()
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.product_backlog, self.backlog)
+        self.assertEqual(self.historia.situacao, "a_fazer")
+
+    def test_quadro_mostra_cada_historia_na_coluna_certa(self):
+        outra = HistoriaUsuario.objects.create(
+            titulo="Buscar livro", sprint_backlog=self.sprint, papel="a", acao="b", beneficio="c",
+            story_points=5, responsavel=self.dono)
+        self.mudar("concluida", outra)
+        response = self.client.get(reverse("sprint_detalhe", args=[self.projeto.pk, self.sprint.pk]))
+        colunas = {c["valor"]: [h.titulo for h in c["historias"]] for c in response.context["colunas"]}
+        self.assertEqual(colunas["a_fazer"], ["Renovar empréstimo"])
+        self.assertEqual(colunas["em_desenvolvimento"], [])
+        self.assertEqual(colunas["concluida"], ["Buscar livro"])
+        self.assertContains(response, "Lia Melo")
+        self.assertContains(response, "Sem responsável")
+        self.assertContains(response, "Iniciar →")
+        self.assertContains(response, "← Reabrir")
+
+    def test_responsavel_so_pode_ser_dono_ou_membro(self):
+        url = reverse("historia_editar", args=[self.projeto.pk, self.historia.pk])
+        response = self.client.post(url, self.dados_form(responsavel=self.estranho.pk, situacao="a_fazer"))
+        self.assertTrue(response.context["form"].errors.get("responsavel"))
+        self.client.post(url, self.dados_form(responsavel=self.dono.pk, situacao="em_desenvolvimento"))
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.responsavel, self.dono)
+        self.assertEqual(self.historia.situacao, "em_desenvolvimento")
+
+    def test_model_recusa_responsavel_de_fora_do_projeto(self):
+        self.historia.responsavel = self.estranho
+        with self.assertRaises(ValidationError):
+            self.historia.save()
+
+    def test_situacao_so_aparece_no_formulario_com_a_historia_em_sprint(self):
+        no_sprint = self.client.get(reverse("historia_editar", args=[self.projeto.pk, self.historia.pk]))
+        self.assertIn("situacao", no_sprint.context["form"].fields)
+        historia_pb = HistoriaUsuario.objects.create(
+            titulo="No PB", product_backlog=self.backlog, papel="a", acao="b", beneficio="c")
+        no_pb = self.client.get(reverse("historia_editar", args=[self.projeto.pk, historia_pb.pk]))
+        self.assertNotIn("situacao", no_pb.context["form"].fields)
+        self.assertIn("responsavel", no_pb.context["form"].fields)
+
+    def test_membro_removido_ou_que_sai_deixa_historias_sem_responsavel(self):
+        self.historia.responsavel = self.membro
+        self.historia.save()
+        self.client.post(reverse("sair_projeto", args=[self.projeto.pk]))
+        self.historia.refresh_from_db()
+        self.assertIsNone(self.historia.responsavel)
+
+        self.projeto.membros.add(self.membro)
+        self.historia.responsavel = self.membro
+        self.historia.save()
+        self.client.force_login(self.dono)
+        self.client.post(reverse("remover_membro", args=[self.projeto.pk, self.membro.pk]))
+        self.historia.refresh_from_db()
+        self.assertIsNone(self.historia.responsavel)

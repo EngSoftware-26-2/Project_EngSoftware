@@ -27,6 +27,8 @@
 {% comment %} Onde a história está e para onde pode ir (requisito 8; HU11) {% endcomment %}
 <h3>Backlog</h3>
 <p>Está em: <strong>{% if historia.sprint_backlog %}<a href="{% url 'sprint_detalhe' projeto.id historia.sprint_backlog.id %}">{{ historia.sprint_backlog.nome }}</a>{% else %}Product Backlog{% endif %}</strong></p>
+{% if historia.sprint_backlog %}<p>Situação: <span class="situacao situacao-{{ historia.situacao }}">{{ historia.get_situacao_display }}</span></p>{% endif %}
+<p>Responsável: <strong>{% if historia.responsavel %}{{ historia.responsavel.first_name|default:historia.responsavel.email }}{% else %}Sem responsável{% endif %}</strong></p>
 {% if form_mover.fields.destino.choices %}
 <form method="post" action="{% url 'historia_mover' projeto.id historia.id %}">
   {% csrf_token %}

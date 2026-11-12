@@ -142,6 +142,26 @@ class HistoriaUsuario(models.Model):
     # ele usa a mesma escala dos Story Points (0, 1, 2, 3, 5, 8, 13, 21, 34 ou 55).
     effort = models.IntegerField("Effort", choices=STORY_POINTS_CHOICES, null=True, blank=True, help_text="Esforço na escala de pontos de história")
 
+    # Situação da história dentro do Sprint (quadro Kanban: A fazer, Em desenvolvimento,
+    # Concluída). Toda história começa "A fazer". No Product Backlog a situação não aparece e
+    # volta a ser "A fazer" (ver save()), porque a história ainda não está em trabalho.
+    SITUACAO_A_FAZER = 'a_fazer'
+    SITUACAO_EM_DESENVOLVIMENTO = 'em_desenvolvimento'
+    SITUACAO_CONCLUIDA = 'concluida'
+    SITUACAO_CHOICES = [
+        (SITUACAO_A_FAZER, 'A fazer'),
+        (SITUACAO_EM_DESENVOLVIMENTO, 'Em desenvolvimento'),
+        (SITUACAO_CONCLUIDA, 'Concluída'),
+    ]
+    situacao = models.CharField("Situação", max_length=20, choices=SITUACAO_CHOICES, default=SITUACAO_A_FAZER)
+
+    # Responsável pela história: o dono ou um membro do projeto. É opcional ("Sem
+    # responsável"). Se a pessoa sair do projeto, a história fica sem responsável (signals.py).
+    responsavel = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='historias_responsavel', verbose_name="Responsável",
+    )
+
     class Meta:
         # Restrições no banco. Os "choices" só limitam o formulário; um valor fora
         # da escala salvo por outro caminho (shell, script, outra view) entrava no banco.
@@ -174,6 +194,10 @@ class HistoriaUsuario(models.Model):
                 condition=Q(effort__isnull=True) | Q(effort__in=[0, 1, 2, 3, 5, 8, 13, 21, 34, 55]),
                 name='historia_effort_fibonacci',
             ),
+            models.CheckConstraint(
+                condition=Q(situacao__in=['a_fazer', 'em_desenvolvimento', 'concluida']),
+                name='historia_situacao_valida',
+            ),
         ]
 
     # ------------------------------------------------------------------
@@ -198,10 +222,21 @@ class HistoriaUsuario(models.Model):
         backlog = self.product_backlog if self.product_backlog_id else self.sprint_backlog
         if self.epico_id and self.epico.projeto_id != backlog.projeto_id:
             raise ValidationError({"epico": "O épico e o backlog devem pertencer ao mesmo projeto."})
+        # O responsável precisa participar do projeto (dono ou membro).
+        if self.responsavel_id:
+            projeto = backlog.projeto
+            if self.responsavel_id != projeto.dono_id and not projeto.membros.filter(pk=self.responsavel_id).exists():
+                raise ValidationError({"responsavel": "O responsável precisa ser o dono ou um membro do projeto."})
 
     def save(self, *args, **kwargs):
         # ModelForms já validam; esta chamada também protege criações pelo ORM.
         # Valida o estado efetivamente persistido quando save é parcial.
+        # No Product Backlog a história ainda não está em trabalho: a situação volta a ser
+        # "A fazer". Assim, se ela for para um Sprint de novo, entra na primeira coluna.
+        if self.sprint_backlog_id is None and self.situacao != self.SITUACAO_A_FAZER:
+            self.situacao = self.SITUACAO_A_FAZER
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"situacao"}
         update_fields = kwargs.get("update_fields")
         if update_fields and self.pk:
             persisted = type(self).objects.get(pk=self.pk)

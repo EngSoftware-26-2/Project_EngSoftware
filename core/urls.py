@@ -28,6 +28,7 @@ urlpatterns = [
     path("projetos/<int:pk>/historias/<int:historia_id>/excluir/", views.historia_excluir, name="historia_excluir"),
     # Mover história entre backlogs (requisito 8; HU11)
     path("projetos/<int:pk>/historias/<int:historia_id>/mover/", views.historia_mover, name="historia_mover"),
+    path("projetos/<int:pk>/historias/<int:historia_id>/situacao/", views.historia_situacao, name="historia_situacao"),
     # Critérios de aceitação de uma história (requisitos 12 e 13)
     path("projetos/<int:pk>/historias/<int:historia_id>/criterios/novo/", views.criterio_criar, name="criterio_criar"),
     path("projetos/<int:pk>/historias/<int:historia_id>/criterios/<int:criterio_id>/editar/", views.criterio_editar, name="criterio_editar"),

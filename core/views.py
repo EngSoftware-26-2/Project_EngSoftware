@@ -614,10 +614,19 @@ def sprint_criar(request, pk):
 def sprint_detalhe(request, pk, sprint_id):
     projeto = projeto_acessivel(request.user, pk)
     sprint = obter_sprint(projeto, sprint_id)
-    historias = sprint.historias.select_related("epico").order_by("titulo")
+    historias = list(sprint.historias.select_related("epico", "responsavel").order_by("titulo"))
     total_pontos = sum(h.story_points or 0 for h in historias)
+    # Quadro Kanban: uma coluna por situação, com quantas histórias e pontos cada uma tem.
+    colunas = []
+    for valor, nome in HistoriaUsuario.SITUACAO_CHOICES:
+        da_coluna = [h for h in historias if h.situacao == valor]
+        colunas.append({
+            "valor": valor, "nome": nome, "historias": da_coluna,
+            "pontos": sum(h.story_points or 0 for h in da_coluna),
+        })
     return render(request, "core/sprint_detalhe.html", {
         "projeto": projeto, "sprint": sprint, "historias": historias, "total_pontos": total_pontos,
+        "colunas": colunas,
     })
 
 
@@ -679,3 +688,25 @@ def historia_mover(request, pk, historia_id):
         for erro in form.errors.get("destino", []):
             messages.error(request, erro)
     return redirect("historia_detalhe", pk=projeto.pk, historia_id=historia.pk)
+
+
+# Quadro Kanban do Sprint: muda a situação de uma história (A fazer, Em desenvolvimento ou
+# Concluída) pelos botões do cartão. Dono e membros podem mover os cartões. Só vale para
+# histórias que estão em um Sprint; no Product Backlog a situação não se aplica.
+@login_required(login_url="login")
+@require_POST
+def historia_situacao(request, pk, historia_id):
+    projeto = projeto_acessivel(request.user, pk)
+    historia = obter_historia(projeto, historia_id)
+    nova = request.POST.get("situacao")
+    validas = dict(HistoriaUsuario.SITUACAO_CHOICES)
+    if historia.sprint_backlog_id is None:
+        messages.error(request, "A história precisa estar em um Sprint para mudar de situação.")
+        return redirect("historia_detalhe", pk=projeto.pk, historia_id=historia.pk)
+    if nova not in validas:
+        messages.error(request, "Situação inválida.")
+    elif nova != historia.situacao:
+        historia.situacao = nova
+        historia.save(update_fields=["situacao"])
+        messages.success(request, f"“{historia.titulo}” foi para {validas[nova]}.")
+    return redirect("sprint_detalhe", pk=projeto.pk, sprint_id=historia.sprint_backlog_id)
