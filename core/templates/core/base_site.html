@@ -19,8 +19,9 @@
     * { box-sizing: border-box; }
     body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 15px; margin: 0; color: var(--texto); background: var(--fundo); line-height: 1.5; -webkit-font-smoothing: antialiased; }
     h1, h2, h3 { line-height: 1.25; color: var(--azul); }
-    h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -.01em; }
-    h2 { font-size: 1.25rem; font-weight: 600; }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -.01em; }
+    h2 { font-size: 1.15rem; font-weight: 600; }
+    h3 { font-size: 1.05rem; font-weight: 600; }
     a { color: var(--azul-claro); }
     a:hover { color: var(--azul); }
     .topo { background: var(--azul); color: #fff; box-shadow: 0 2px 8px rgba(16,24,40,.15); }
@@ -67,6 +68,26 @@
     input:focus, textarea:focus, select:focus { outline: none; border-color: var(--azul-claro); box-shadow: 0 0 0 3px rgba(46,85,151,.18); }
     .campo.campo-com-erro input, .campo.campo-com-erro select, .campo.campo-com-erro textarea { border-color: var(--vermelho); background: #fffafa; }
     .campo.campo-com-erro input:focus, .campo.campo-com-erro textarea:focus, .campo.campo-com-erro select:focus { box-shadow: 0 0 0 3px rgba(198,40,40,.15); }
+    .inicio { max-width: 880px; margin: 0 auto; }
+    .inicio-topo { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 16px 0 20px; padding-bottom: 16px; border-bottom: 1px solid var(--borda); }
+    .inicio-topo h1 { margin: 0 0 2px; }
+    .inicio-topo .subtitulo { margin: 0; color: var(--cinza); }
+    .grade-projetos { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
+    .cartao-projeto { margin: 0; display: flex; flex-direction: column; }
+    .cartao-projeto-topo { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    .cartao-projeto h3 { margin: 0; }
+    .cartao-projeto h3 a { text-decoration: none; color: var(--azul); }
+    .cartao-projeto h3 a:hover { text-decoration: underline; }
+    .cartao-projeto .descricao { color: var(--cinza); margin: 8px 0 0; font-size: .93em; }
+    .cartao-projeto .acoes { margin: auto 0 0; padding-top: 14px; }
+    .cartao-projeto .acoes { gap: 6px; }
+    .cartao-projeto .botao, .cartao-projeto button { padding: 5px 10px; font-size: .82em; border-radius: 6px; }
+    .cartao-projeto .perigo { margin-left: auto; }
+    .estado-vazio { text-align: center; padding: 48px 24px; max-width: 560px; margin: 32px auto; }
+    .estado-vazio-icone { font-size: 2.2rem; line-height: 1; margin-bottom: 12px; }
+    .estado-vazio h2 { margin: 0 0 8px; }
+    .estado-vazio p { color: var(--cinza); margin: 0 auto 20px; max-width: 420px; }
+    @media (max-width: 480px) { .grade-projetos { grid-template-columns: 1fr; } }
     .helptext { display: block; color: var(--cinza); font-size: .85em; }
     fieldset { border: 1px solid var(--borda); border-radius: var(--raio); margin: 16px 0; padding: 8px 16px; background: #fff; }
     .vazio { color: var(--cinza); font-style: italic; }
