@@ -269,7 +269,23 @@ def detalhe_projeto(request, pk):
         projeto = projeto_acessivel(request.user, pk)
     except Http404:
         return redirect("inicio")
-    return render(request, "core/detalhe_projeto.html", {"projeto": projeto})
+    # Resumo de cada área do projeto para os cartões da página (os botões continuam os mesmos).
+    backlog = ProductBacklog.objects.filter(projeto=projeto).first()
+    sprints = list(projeto.sprint_backlogs.order_by("data_inicio", "pk"))
+    sprint_atual = next((s for s in sprints if s.status == SprintBacklog.STATUS_EM_ANDAMENTO), None)
+    proximo = next((s for s in sprints if s.status == SprintBacklog.STATUS_PLANEJADO), None)
+    return render(request, "core/detalhe_projeto.html", {
+        "projeto": projeto,
+        "resumo": {
+            "no_backlog": backlog.historias.filter(sprint_backlog__isnull=True).count() if backlog else 0,
+            "sprints": len(sprints),
+            "sprint_atual": sprint_atual,
+            "proximo_sprint": proximo,
+            "historias": historias_visiveis(projeto).count(),
+            "epicos": projeto.epicos.count(),
+            "membros": projeto.membros.count() + 1,
+        },
+    })
 
 
 # HU06 - Editar projeto: só o dono (o filtro dono=request.user dá 404 para membros)

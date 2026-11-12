@@ -1678,3 +1678,32 @@ class FormulariosDicasTests(TestCase):
         self.assertIn("campo-com-erro", html)
         self.assertTrue(html.index('id="id_email"') < html.index("Nenhuma conta com este e-mail."))
         self.assertContains(self.client.post(self.url("membros_projeto"), {"email": "x"}), "Informe um e-mail válido.")
+
+
+# Acabamento: página do projeto com o resumo de cada área e os mesmos botões de antes
+class PaginaProjetoTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.membro = User.objects.create_user("rui", email="rui@exemplo.com", first_name="Rui Dias")
+        self.projeto = Projeto.objects.create(nome="Projeto R", dono=self.dono)
+        self.projeto.membros.add(self.membro)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.client.force_login(self.dono)
+
+    def test_resumo_das_areas(self):
+        HistoriaUsuario.objects.create(titulo="No PB", product_backlog=self.backlog, papel="a", acao="b", beneficio="c")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint Atual", **SPRINT_PERIODO)
+        HistoriaUsuario.objects.create(titulo="No Sprint", sprint_backlog=sprint, papel="a", acao="b", beneficio="c")
+        Epico.objects.create(projeto=self.projeto, titulo="E")
+        response = self.client.get(reverse("detalhe_projeto", args=[self.projeto.pk]))
+        resumo = response.context["resumo"]
+        self.assertEqual((resumo["no_backlog"], resumo["historias"], resumo["epicos"], resumo["membros"]), (1, 2, 1, 2))
+        self.assertEqual(resumo["sprint_atual"], sprint)
+        for botao in ("Ver Product Backlog", "Sprints", "Histórias", "Épicos", "Ver membros", "Editar projeto"):
+            self.assertContains(response, botao)
+
+    def test_membro_ve_sair_e_nao_ve_editar(self):
+        self.client.force_login(self.membro)
+        response = self.client.get(reverse("detalhe_projeto", args=[self.projeto.pk]))
+        self.assertContains(response, "Sair do projeto")
+        self.assertNotContains(response, "Editar projeto")

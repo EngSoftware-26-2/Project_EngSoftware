@@ -1,14 +1,18 @@
 {% extends "core/base.html" %}
+{% comment %} Confirmação de exclusão do projeto (HU07) e do Product Backlog (HU08). {% endcomment %}
 {% block titulo %}{{ titulo }}{% endblock %}
 {% block conteudo %}
-<h2>{{ titulo }}: {{ projeto.nome }}</h2>
-{% if aviso %}<p>{{ aviso }}</p>{% endif %}
-{% if erro %}<p class="erro" role="alert">{{ erro }}</p>{% endif %}
-<form method="post">
-  {% csrf_token %}
-  <div class="acoes">
-    <button type="submit" class="perigo">Confirmar exclusão</button>
-    <a class="botao secundario" href="{% url 'detalhe_projeto' projeto.pk %}">Cancelar</a>
-  </div>
-</form>
+<div class="cartao cartao-medio">
+  <h2>{{ titulo }}: {{ projeto.nome }}</h2>
+  <p class="sub">Esta ação não pode ser desfeita.</p>
+  {% if aviso %}<div class="aviso">{{ aviso }}</div>{% endif %}
+  {% if erro %}<div class="mensagem erro-msg" role="alert">{{ erro }}</div>{% endif %}
+  <form method="post">
+    {% csrf_token %}
+    <div class="botoes">
+      <button type="submit" class="perigo">Confirmar exclusão</button>
+      <a class="botao secundario" href="{% url 'detalhe_projeto' projeto.pk %}">Cancelar</a>
+    </div>
+  </form>
+</div>
 {% endblock %}
