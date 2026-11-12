@@ -1,27 +1,52 @@
 {% extends "core/base.html" %}
+{% load core_extras %}
+{% comment %} Detalhe do épico (HU15 a HU17) com os atalhos para ligar histórias sem precisar
+   editar uma por uma: "Nova história neste épico", "Adicionar histórias" (inclusive de
+   outro épico) e "Tirar do épico" em cada linha. {% endcomment %}
 {% block titulo %}{{ epico.titulo }} – {{ projeto.nome }}{% endblock %}
 {% block conteudo %}
-<h2>Épico: {{ epico.titulo }}</h2>
-{% if epico.descricao %}<p>{{ epico.descricao }}</p>{% endif %}
-<h3>Histórias ligadas</h3>
+<p class="sub"><a href="{% url 'epico_lista' projeto.id %}">← Épicos</a></p>
+<div class="linha-titulo">
+  <div>
+    <h2>Épico: {{ epico.titulo }}</h2>
+    <p class="sub">{% if epico.descricao %}{{ epico.descricao }} · {% endif %}{{ historias|length }} história{{ historias|length|pluralize }} · {{ total_pontos }} Story Points</p>
+  </div>
+  <div class="acoes">
+    <a class="botao" href="{% url 'historia_criar' projeto.id %}?epico={{ epico.id }}">Nova história neste épico</a>
+    <a class="botao secundario" href="{% url 'epico_adicionar_historias' projeto.id epico.id %}">Adicionar histórias</a>
+    <a class="botao secundario" href="{% url 'epico_editar' projeto.id epico.id %}">Editar</a>
+    <a class="botao secundario" href="{% url 'epico_excluir' projeto.id epico.id %}">Excluir</a>
+  </div>
+</div>
+
 {% if historias %}
 <table>
-  <tr><th>Título</th><th>Story Points</th><th>MoSCoW</th><th>RICE</th></tr>
+  <tr><th>História</th><th>Story Points</th><th>MoSCoW</th><th>RICE</th><th>Onde está</th><th></th></tr>
   {% for h in historias %}
   <tr>
-    <td><a href="{% url 'historia_detalhe' projeto.id h.id %}">{{ h.titulo }}</a></td>
-    <td>{{ h.story_points_display }}</td>
-    <td>{{ h.moscow|default:"—" }}</td>
-    <td>{{ h.rice_display }}</td>
+    <td><a href="{% url 'historia_detalhe' projeto.id h.id %}">{{ h.titulo }}</a>
+      {% if h.grande_demais or h.sem_criterios %}<div class="etiquetas-linha">{% include "core/_avisos_historia.html" with h=h %}</div>{% endif %}</td>
+    <td class="nowrap">{{ h.story_points_display }}</td>
+    <td>{% if h.moscow %}<span class="pill moscow-{{ h.moscow }}">{{ h.get_moscow_display }}</span>{% else %}<span class="sub">Sem etiqueta</span>{% endif %}</td>
+    <td class="nowrap">{{ h.rice_display }}</td>
+    <td>{% if h.sprint_backlog %}<a href="{% url 'sprint_detalhe' projeto.id h.sprint_backlog.id %}">{{ h.sprint_backlog.nome }}</a>{% else %}<a href="{% url 'product_backlog' projeto.id %}">Product Backlog</a>{% endif %}</td>
+    <td>
+      <form method="post" action="{% url 'epico_remover_historia' projeto.id epico.id h.id %}" class="mover-linha">
+        {% csrf_token %}<button type="submit" class="secundario">Tirar do épico</button>
+      </form>
+    </td>
   </tr>
   {% endfor %}
 </table>
+<p class="sub">“Tirar do épico” não apaga a história: ela só fica sem épico.</p>
 {% else %}
-<p class="vazio">Nenhuma história ligada a este épico. Para ligar, edite uma história e escolha este épico.</p>
+<div class="cartao estado-vazio">
+  <h2>Nenhuma história neste épico ainda.</h2>
+  <p>Crie uma história já ligada a ele ou escolha histórias que já existem no projeto.</p>
+  <div class="acoes" style="justify-content:center">
+    <a class="botao" href="{% url 'historia_criar' projeto.id %}?epico={{ epico.id }}">Nova história neste épico</a>
+    <a class="botao secundario" href="{% url 'epico_adicionar_historias' projeto.id epico.id %}">Adicionar histórias</a>
+  </div>
+</div>
 {% endif %}
-<p>
-  <a class="botao" href="{% url 'epico_editar' projeto.id epico.id %}">Editar</a>
-  <a class="botao perigo" href="{% url 'epico_excluir' projeto.id epico.id %}">Excluir</a>
-  <a class="botao secundario" href="{% url 'epico_lista' projeto.id %}">Voltar</a>
-</p>
 {% endblock %}

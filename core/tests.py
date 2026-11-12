@@ -1549,3 +1549,90 @@ class AvisosHistoriaTests(TestCase):
         self.assertContains(quadro, "Grande: dividir?")
         self.assertContains(quadro, "Sem critérios")
         self.assertContains(self.client.get(self.url("historia_detalhe", grande.pk)), "História grande:")
+
+
+# Atalhos do épico (adicionar várias histórias, inclusive de outro épico; tirar do épico;
+# nova história já no épico) e mover critério de aceitação para outra história
+class EpicoAtalhosTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.estranho = User.objects.create_user("eva", email="eva@exemplo.com")
+        self.projeto = Projeto.objects.create(nome="Projeto E", dono=self.dono)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.emprestimos = Epico.objects.create(projeto=self.projeto, titulo="Empréstimos")
+        self.acervo = Epico.objects.create(projeto=self.projeto, titulo="Acervo")
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def h(self, titulo, epico=None):
+        return HistoriaUsuario.objects.create(titulo=titulo, product_backlog=self.backlog, papel="a",
+                                              acao="b", beneficio="c", epico=epico)
+
+    def test_lista_mostra_sem_epico_e_de_outro_epico(self):
+        self.h("Livre")
+        self.h("Do acervo", self.acervo)
+        self.h("Já aqui", self.emprestimos)
+        response = self.client.get(self.url("epico_adicionar_historias", self.emprestimos.pk))
+        self.assertEqual([h.titulo for h in response.context["sem_epico"]], ["Livre"])
+        self.assertEqual([h.titulo for h in response.context["outro_epico"]], ["Do acervo"])
+
+    def test_adiciona_varias_e_move_de_outro_epico(self):
+        livre, do_acervo = self.h("Livre"), self.h("Do acervo", self.acervo)
+        response = self.client.post(self.url("epico_adicionar_historias", self.emprestimos.pk),
+                                    {"historias": [livre.pk, do_acervo.pk]}, follow=True)
+        livre.refresh_from_db()
+        do_acervo.refresh_from_db()
+        self.assertEqual(livre.epico, self.emprestimos)
+        self.assertEqual(do_acervo.epico, self.emprestimos)
+        self.assertContains(response, "2 histórias ligadas ao épico. Uma delas saiu de outro épico.")
+
+    def test_nada_marcado_avisa(self):
+        self.h("Livre")
+        response = self.client.post(self.url("epico_adicionar_historias", self.emprestimos.pk), {})
+        self.assertContains(response, "Marque pelo menos uma história.")
+
+    def test_nao_liga_historia_de_outro_projeto(self):
+        outro = Projeto.objects.create(nome="Outro", dono=self.estranho)
+        pb_outro = ProductBacklog.objects.create(projeto=outro)
+        alheia = HistoriaUsuario.objects.create(titulo="Alheia", product_backlog=pb_outro, papel="a", acao="b", beneficio="c")
+        self.client.post(self.url("epico_adicionar_historias", self.emprestimos.pk), {"historias": [alheia.pk]})
+        alheia.refresh_from_db()
+        self.assertIsNone(alheia.epico)
+
+    def test_tirar_do_epico_nao_apaga(self):
+        historia = self.h("Sai", self.emprestimos)
+        self.client.post(self.url("epico_remover_historia", self.emprestimos.pk, historia.pk))
+        historia.refresh_from_db()
+        self.assertIsNone(historia.epico)
+        self.assertEqual(self.client.get(self.url("epico_remover_historia", self.emprestimos.pk, historia.pk)).status_code, 405)
+
+    def test_nova_historia_neste_epico_vem_com_o_epico_escolhido(self):
+        response = self.client.get(self.url("historia_criar") + f"?epico={self.emprestimos.pk}")
+        self.assertEqual(response.context["form"].initial.get("epico"), self.emprestimos.pk)
+        outro = Projeto.objects.create(nome="Outro", dono=self.dono)
+        epico_alheio = Epico.objects.create(projeto=outro, titulo="X")
+        response = self.client.get(self.url("historia_criar") + f"?epico={epico_alheio.pk}")
+        self.assertIsNone(response.context["form"].initial.get("epico"))
+
+    def test_mover_criterio_para_outra_historia(self):
+        grande, nova = self.h("Grande"), self.h("Nova")
+        c = CriterioAceitacao.objects.create(historia_usuario=grande, dado="d", quando="q", entao="e")
+        response = self.client.post(self.url("criterio_editar", grande.pk, c.pk),
+                                    {"dado": "d", "quando": "q", "entao": "e", "historia_usuario": nova.pk}, follow=True)
+        c.refresh_from_db()
+        self.assertEqual(c.historia_usuario, nova)
+        self.assertContains(response, "Critério movido para “Nova”.")
+
+    def test_criterio_nao_vai_para_historia_de_outro_projeto(self):
+        grande = self.h("Grande")
+        c = CriterioAceitacao.objects.create(historia_usuario=grande, dado="d", quando="q", entao="e")
+        outro = Projeto.objects.create(nome="Outro", dono=self.estranho)
+        alheia = HistoriaUsuario.objects.create(titulo="Alheia", product_backlog=ProductBacklog.objects.create(projeto=outro),
+                                                papel="a", acao="b", beneficio="c")
+        response = self.client.post(self.url("criterio_editar", grande.pk, c.pk),
+                                    {"dado": "d", "quando": "q", "entao": "e", "historia_usuario": alheia.pk})
+        self.assertTrue(response.context["form"].errors.get("historia_usuario"))
+        c.refresh_from_db()
+        self.assertEqual(c.historia_usuario, grande)

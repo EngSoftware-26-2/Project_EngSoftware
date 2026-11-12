@@ -46,5 +46,7 @@ urlpatterns = [
     path("projetos/<int:pk>/epicos/novo/", views.epico_criar, name="epico_criar"),
     path("projetos/<int:pk>/epicos/<int:epico_id>/", views.epico_detalhe, name="epico_detalhe"),
     path("projetos/<int:pk>/epicos/<int:epico_id>/editar/", views.epico_editar, name="epico_editar"),
+    path("projetos/<int:pk>/epicos/<int:epico_id>/adicionar-historias/", views.epico_adicionar_historias, name="epico_adicionar_historias"),
+    path("projetos/<int:pk>/epicos/<int:epico_id>/historias/<int:historia_id>/remover/", views.epico_remover_historia, name="epico_remover_historia"),
     path("projetos/<int:pk>/epicos/<int:epico_id>/excluir/", views.epico_excluir, name="epico_excluir"),
 ]

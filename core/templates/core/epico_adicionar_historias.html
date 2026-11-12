@@ -1,0 +1,38 @@
+{% extends "core/base.html" %}
+{% comment %} Escolher várias histórias de uma vez para ligar ao épico. As que estão em outro
+   épico mudam de épico ao serem marcadas. {% endcomment %}
+{% block titulo %}Adicionar histórias – {{ epico.titulo }}{% endblock %}
+{% block conteudo %}
+<div class="cartao cartao-medio cartao-largo">
+  <h2>Adicionar histórias ao épico “{{ epico.titulo }}”</h2>
+  <p class="sub">Marque as histórias e confirme. As que estão em outro épico passam para este.</p>
+  {% if sem_epico or outro_epico %}
+  <form method="post">
+    {% csrf_token %}
+    {% if sem_epico %}
+    <h3 class="titulo-secao">Sem épico</h3>
+    <div class="lista-marcar">
+      {% for h in sem_epico %}
+      <label><input type="checkbox" name="historias" value="{{ h.id }}"> <span>{{ h.titulo }}</span> <small class="sub">{{ h.story_points_display }}{% if h.moscow %} · {{ h.get_moscow_display }}{% endif %}</small></label>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if outro_epico %}
+    <h3 class="titulo-secao">Em outro épico</h3>
+    <div class="lista-marcar">
+      {% for h in outro_epico %}
+      <label><input type="checkbox" name="historias" value="{{ h.id }}"> <span>{{ h.titulo }}</span> <span class="pill">{{ h.epico.titulo }}</span> <small class="sub">{{ h.story_points_display }}</small></label>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div class="botoes">
+      <button type="submit">Adicionar ao épico</button>
+      <a class="botao secundario" href="{% url 'epico_detalhe' projeto.id epico.id %}">Voltar</a>
+    </div>
+  </form>
+  {% else %}
+  <p class="vazio">Todas as histórias do projeto já estão neste épico.</p>
+  <a class="botao secundario" href="{% url 'epico_detalhe' projeto.id epico.id %}">Voltar</a>
+  {% endif %}
+</div>
+{% endblock %}

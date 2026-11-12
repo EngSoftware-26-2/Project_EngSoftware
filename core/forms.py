@@ -281,6 +281,7 @@ class CriterioAceitacaoForm(forms.ModelForm):
         fields = ['dado', 'quando', 'entao']
         widgets = {
             'dado': forms.Textarea(attrs={'rows': 2}),
+            'quando': forms.Textarea(attrs={'rows': 2}),
             'entao': forms.Textarea(attrs={'rows': 2}),
         }
         error_messages = {
@@ -288,6 +289,30 @@ class CriterioAceitacaoForm(forms.ModelForm):
             'quando': {'required': 'Preencha o Quando (ação ou evento).'},
             'entao': {'required': 'Preencha o Então (resultado esperado).'},
         }
+
+    def __init__(self, *args, historias=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['dado'].help_text = 'Contexto inicial ou estado do sistema antes da ação.'
+        self.fields['quando'].help_text = 'Ação ou evento que o usuário executa.'
+        self.fields['entao'].help_text = 'Resultado esperado ou consequência da ação.'
+        # Mover o critério para outra história do mesmo projeto: só na edição.
+        if historias is not None and self.instance.pk:
+            self.fields['historia_usuario'] = forms.ModelChoiceField(
+                label='História', queryset=historias, empty_label=None, required=False,
+                initial=self.instance.historia_usuario_id,
+                help_text='Troque para mover este critério para outra história do projeto, por exemplo ao dividir uma história grande.',
+                error_messages={'invalid_choice': 'Escolha uma história deste projeto.'},
+            )
+            self.fields['historia_usuario'].label_from_instance = lambda h: h.titulo
+
+    def save(self, commit=True):
+        criterio = super().save(commit=False)
+        # Se o campo não vier no envio, o critério continua na mesma história.
+        if 'historia_usuario' in self.fields and self.cleaned_data.get('historia_usuario'):
+            criterio.historia_usuario = self.cleaned_data['historia_usuario']
+        if commit:
+            criterio.save()
+        return criterio
 
 
 # (Requisito 6; HU09 e HU10) formulário para criar e editar um Sprint Backlog,

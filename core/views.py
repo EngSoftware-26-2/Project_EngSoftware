@@ -446,7 +446,13 @@ def historia_criar(request, pk):
         messages.error(request, "Crie o Product Backlog do projeto antes de criar histórias.")
         return redirect("criar_product_backlog", pk=projeto.pk)
     historia = HistoriaUsuario(product_backlog=backlog)
-    form = HistoriaUsuarioForm(request.POST or None, instance=historia, projeto=projeto)
+    # "Nova história neste épico": a página do épico manda ?epico=<id> e o campo já vem
+    # escolhido (só vale para épicos do próprio projeto).
+    inicial = {}
+    epico_id = request.GET.get("epico")
+    if epico_id and epico_id.isdigit() and Epico.objects.filter(pk=epico_id, projeto=projeto).exists():
+        inicial["epico"] = int(epico_id)
+    form = HistoriaUsuarioForm(request.POST or None, instance=historia, projeto=projeto, initial=inicial)
     if request.method == "POST" and form.is_valid():
         nova = form.save()
         messages.success(request, "História criada no Product Backlog.")
@@ -526,9 +532,59 @@ def epico_criar(request, pk):
 def epico_detalhe(request, pk, epico_id):
     projeto = projeto_acessivel(request.user, pk)
     epico = get_object_or_404(Epico, pk=epico_id, projeto=projeto)
+    historias = list(epico.historias.select_related("sprint_backlog", "responsavel")
+                     .annotate(num_criterios=Count("criterios_aceitacao")).order_by("titulo"))
     return render(request, "core/epico_detalhe.html", {
-        "projeto": projeto, "epico": epico, "historias": epico.historias.order_by("titulo"),
+        "projeto": projeto, "epico": epico, "historias": historias,
+        "total_pontos": sum(h.story_points or 0 for h in historias),
     })
+
+
+# Atalho do épico (ponto 7): escolher várias histórias do projeto de uma vez e ligar ao
+# épico. Aparecem as sem épico e as que estão em outro épico; marcar uma destas move a
+# história de épico.
+@login_required(login_url="login")
+def epico_adicionar_historias(request, pk, epico_id):
+    projeto = projeto_acessivel(request.user, pk)
+    epico = get_object_or_404(Epico, pk=epico_id, projeto=projeto)
+    candidatas = historias_visiveis(projeto).exclude(epico=epico).select_related("epico").order_by("titulo")
+    if request.method == "POST":
+        escolhidas = candidatas.filter(pk__in=request.POST.getlist("historias"))
+        if not escolhidas:
+            messages.error(request, "Marque pelo menos uma história.")
+        else:
+            de_outro_epico = 0
+            for historia in escolhidas:
+                if historia.epico_id:
+                    de_outro_epico += 1
+                historia.epico = epico
+                historia.save(update_fields=["epico"])
+            total = len(escolhidas)
+            texto = "1 história ligada ao épico." if total == 1 else f"{total} histórias ligadas ao épico."
+            if de_outro_epico == 1:
+                texto += " Uma delas saiu de outro épico." if total > 1 else " Ela saiu de outro épico."
+            elif de_outro_epico > 1:
+                texto += f" {de_outro_epico} delas saíram de outro épico."
+            messages.success(request, texto)
+            return redirect("epico_detalhe", pk=projeto.pk, epico_id=epico.pk)
+    return render(request, "core/epico_adicionar_historias.html", {
+        "projeto": projeto, "epico": epico,
+        "sem_epico": [h for h in candidatas if h.epico_id is None],
+        "outro_epico": [h for h in candidatas if h.epico_id is not None],
+    })
+
+
+# Tira a história do épico: ela fica "sem épico" e não é apagada (como na HU16).
+@login_required(login_url="login")
+@require_POST
+def epico_remover_historia(request, pk, epico_id, historia_id):
+    projeto = projeto_acessivel(request.user, pk)
+    epico = get_object_or_404(Epico, pk=epico_id, projeto=projeto)
+    historia = get_object_or_404(historias_visiveis(projeto), pk=historia_id, epico=epico)
+    historia.epico = None
+    historia.save(update_fields=["epico"])
+    messages.success(request, f"“{historia.titulo}” saiu do épico e ficou sem épico.")
+    return redirect("epico_detalhe", pk=projeto.pk, epico_id=epico.pk)
 
 
 # HU16 - Editar épico (o nome novo aparece em todas as histórias ligadas)
@@ -591,10 +647,15 @@ def criterio_editar(request, pk, historia_id, criterio_id):
     projeto = projeto_acessivel(request.user, pk)
     historia = obter_historia(projeto, historia_id)
     criterio = obter_criterio(historia, criterio_id)
-    form = CriterioAceitacaoForm(request.POST or None, instance=criterio)
+    # Na edição, o critério pode mudar de história (útil ao dividir uma história grande).
+    form = CriterioAceitacaoForm(request.POST or None, instance=criterio,
+                                 historias=historias_visiveis(projeto).order_by("titulo"))
     if request.method == "POST" and form.is_valid():
-        form.save()
-        messages.success(request, "Critério de aceitação atualizado.")
+        salvo = form.save()
+        if salvo.historia_usuario_id != historia.pk:
+            messages.success(request, f"Critério movido para “{salvo.historia_usuario.titulo}”.")
+        else:
+            messages.success(request, "Critério de aceitação atualizado.")
         return redirect("historia_detalhe", pk=projeto.pk, historia_id=historia.pk)
     return render(request, "core/criterio_form.html", {
         "projeto": projeto, "historia": historia, "form": form, "acao": "Editar critério de aceitação",
