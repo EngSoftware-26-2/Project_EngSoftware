@@ -1449,3 +1449,48 @@ class ProductBacklogPrioridadeTests(TestCase):
     def test_sem_sprint_aberto_mostra_aviso(self):
         self.h("Qualquer", "M")
         self.assertContains(self.client.get(self.url("product_backlog")), "Nenhum Sprint aberto")
+
+
+# Organização das telas da história: blocos do formulário, dicas, erros embaixo do campo
+# e etiquetas no topo do detalhe
+class HistoriaTelasTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.projeto = Projeto.objects.create(nome="Projeto H", dono=self.dono)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.epico = Epico.objects.create(projeto=self.projeto, titulo="Empréstimos")
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def test_formulario_em_blocos_na_ordem_com_dicas(self):
+        html = self.client.get(self.url("historia_criar")).content.decode()
+        posicoes = [html.index(t) for t in ("<h3>História</h3>", "Primeiro critério de aceitação",
+                                            "<h3>Classificação</h3>", "Priorização RICE")]
+        self.assertEqual(posicoes, sorted(posicoes))
+        self.assertIn("Quem vai usar. Ex.: leitor", html)
+        self.assertIn("Massivo 3 · Alto 2", html)
+        self.assertIn("novalidate", html)
+
+    def test_epico_story_points_e_moscow_ficam_no_mesmo_bloco(self):
+        html = self.client.get(self.url("historia_criar")).content.decode()
+        inicio = html.index("<h3>Classificação</h3>")
+        fim = html.index("Priorização RICE")
+        for campo in ('id="id_epico"', 'id="id_story_points"', 'id="id_moscow"', 'id="id_responsavel"'):
+            self.assertTrue(inicio < html.index(campo) < fim, campo)
+
+    def test_erro_aparece_embaixo_do_proprio_campo(self):
+        html = self.client.post(self.url("historia_criar"), {"titulo": "", "papel": "leitor", "acao": "x", "beneficio": "y"}).content.decode()
+        self.assertTrue(html.index('id="id_titulo"') < html.index("O título é obrigatório.") < html.index('id="id_papel"'))
+
+    def test_detalhe_mostra_etiquetas_no_topo(self):
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1", **SPRINT_PERIODO)
+        h = HistoriaUsuario.objects.create(titulo="Renovar", sprint_backlog=sprint, papel="leitor", acao="renovar",
+                                           beneficio="não ir à biblioteca", story_points=5, moscow="M",
+                                           epico=self.epico, responsavel=self.dono, situacao="em_desenvolvimento")
+        html = self.client.get(self.url("historia_detalhe", h.pk)).content.decode()
+        topo = html[html.index('<div class="etiquetas-historia">'):html.index('<div class="cartao frase-historia">')]
+        for texto in ("5 pts", "Must Have", "Épico: Empréstimos", "Em desenvolvimento", "Ana Souza"):
+            self.assertIn(texto, topo)
+        self.assertIn("<strong>Como um</strong> leitor", html)

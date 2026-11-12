@@ -1,45 +1,67 @@
 {% extends "core/base.html" %}
+{% comment %} Formulário de criar/editar história de usuário (HU12, HU13), em blocos:
+   1. a história no formato padrão (Como um / Eu quero / Para; requisito 9);
+   2. o primeiro critério de aceitação, só na criação (requisito 13);
+   3. classificação: épico, Story Points e MoSCoW lado a lado, e responsável/situação;
+   4. RICE: os quatro campos numa linha, com a fórmula (requisitos 17 a 19).
+   Cada campo tem dica embaixo e o erro aparece logo abaixo dele. {% endcomment %}
 {% block titulo %}{{ acao }} – {{ projeto.nome }}{% endblock %}
 {% block conteudo %}
-<h2>{{ acao }}</h2>
-<form method="post" novalidate>
+<div class="linha-titulo"><h2>{{ acao }}</h2></div>
+<form method="post" novalidate class="form-blocos">
   {% csrf_token %}
-  {{ form.non_field_errors }}
-  <fieldset><legend>História</legend>
-    <p>{{ form.titulo.label_tag }}{{ form.titulo }}{{ form.titulo.errors }}</p>
-    <p>{{ form.papel.label_tag }}{{ form.papel }}{{ form.papel.errors }}</p>
-    <p>{{ form.acao.label_tag }}{{ form.acao }}{{ form.acao.errors }}</p>
-    <p>{{ form.beneficio.label_tag }}{{ form.beneficio }}{{ form.beneficio.errors }}</p>
-  </fieldset>
-  {% comment %} O primeiro critério só aparece na criação da história; na edição os
-     critérios são gerenciados na página de detalhe (requisito 12). {% endcomment %}
+  {% include "core/_erros_gerais.html" %}
+
+  <section class="cartao bloco">
+    <h3>História</h3>
+    {% include "core/_campo.html" with campo=form.titulo %}
+    <div class="linha-3">
+      {% include "core/_campo.html" with campo=form.papel %}
+      {% include "core/_campo.html" with campo=form.acao %}
+      {% include "core/_campo.html" with campo=form.beneficio %}
+    </div>
+  </section>
+
   {% if form.criterio_dado %}
-  <fieldset><legend>Primeiro critério de aceitação (opcional)</legend>
-    <p>{{ form.criterio_dado.label_tag }}{{ form.criterio_dado }}{{ form.criterio_dado.errors }}</p>
-    <p>{{ form.criterio_quando.label_tag }}{{ form.criterio_quando }}{{ form.criterio_quando.errors }}</p>
-    <p>{{ form.criterio_entao.label_tag }}{{ form.criterio_entao }}{{ form.criterio_entao.errors }}</p>
-    <p class="helptext">Você pode adicionar mais critérios depois, na página da história.</p>
-  </fieldset>
+  <section class="cartao bloco">
+    <h3>Primeiro critério de aceitação <small class="sub">opcional</small></h3>
+    <div class="linha-3">
+      {% include "core/_campo.html" with campo=form.criterio_dado %}
+      {% include "core/_campo.html" with campo=form.criterio_quando %}
+      {% include "core/_campo.html" with campo=form.criterio_entao %}
+    </div>
+    <p class="sub">Se começar a preencher, complete Dado, Quando e Então. Outros critérios podem ser adicionados depois, na página da história.</p>
+  </section>
   {% endif %}
-  <fieldset><legend>Épico</legend>
-    <p>{{ form.epico.label_tag }}{{ form.epico }}{{ form.epico.errors }}</p>
-  </fieldset>
-  <fieldset><legend>Estimativa e prioridade</legend>
-    <p>{{ form.story_points.label_tag }}{{ form.story_points }}{{ form.story_points.errors }}</p>
-    <p>{{ form.moscow.label_tag }}{{ form.moscow }}{{ form.moscow.errors }}</p>
-  </fieldset>
-  <fieldset><legend>{% if form.situacao %}No Sprint{% else %}Responsável{% endif %}</legend>
-    <p>{{ form.responsavel.label_tag }}{{ form.responsavel }}<span class="helptext">{{ form.responsavel.help_text }}</span>{{ form.responsavel.errors }}</p>
-    {% if form.situacao %}<p>{{ form.situacao.label_tag }}{{ form.situacao }}<span class="helptext">{{ form.situacao.help_text }}</span>{{ form.situacao.errors }}</p>{% endif %}
-  </fieldset>
-  <fieldset><legend>RICE = (Reach × Impact × Confidence) / Effort</legend>
-    <p>{{ form.reach.label_tag }}{{ form.reach }}{{ form.reach.errors }}</p>
-    <p>{{ form.impact.label_tag }}{{ form.impact }}{{ form.impact.errors }}</p>
-    <p>{{ form.confidence.label_tag }}{{ form.confidence }}{{ form.confidence.errors }}</p>
-    <p>{{ form.effort.label_tag }}{{ form.effort }}{{ form.effort.errors }}</p>
-  </fieldset>
-  <button class="botao" type="submit">Salvar</button>
-  {% if historia %}<a class="botao secundario" href="{% url 'historia_detalhe' projeto.id historia.id %}">Cancelar</a>
-  {% else %}<a class="botao secundario" href="{% url 'historia_lista' projeto.id %}">Cancelar</a>{% endif %}
+
+  <section class="cartao bloco">
+    <h3>Classificação</h3>
+    <div class="linha-3">
+      {% include "core/_campo.html" with campo=form.epico %}
+      {% include "core/_campo.html" with campo=form.story_points %}
+      {% include "core/_campo.html" with campo=form.moscow %}
+    </div>
+    <div class="linha-3">
+      {% include "core/_campo.html" with campo=form.responsavel %}
+      {% if form.situacao %}{% include "core/_campo.html" with campo=form.situacao %}{% endif %}
+    </div>
+  </section>
+
+  <section class="cartao bloco">
+    <h3>Priorização RICE <small class="sub">score = (Reach × Impact × Confidence) ÷ Effort</small></h3>
+    <div class="linha-4">
+      {% include "core/_campo.html" with campo=form.reach %}
+      {% include "core/_campo.html" with campo=form.impact %}
+      {% include "core/_campo.html" with campo=form.confidence %}
+      {% include "core/_campo.html" with campo=form.effort %}
+    </div>
+    <p class="sub">Com algum campo vazio o score fica “RICE incompleto”; com Effort 0 fica “não calculável”.</p>
+  </section>
+
+  <div class="botoes">
+    <button type="submit">Salvar</button>
+    {% if historia %}<a class="botao secundario" href="{% url 'historia_detalhe' projeto.id historia.id %}">Cancelar</a>
+    {% else %}<a class="botao secundario" href="{% url 'historia_lista' projeto.id %}">Cancelar</a>{% endif %}
+  </div>
 </form>
 {% endblock %}

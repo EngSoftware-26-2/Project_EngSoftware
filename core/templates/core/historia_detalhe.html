@@ -1,59 +1,84 @@
 {% extends "core/base.html" %}
+{% load core_extras %}
+{% comment %} Detalhe da história (HU12, HU13): no topo o título e as etiquetas (Story Points,
+   MoSCoW, épico, situação e responsável); embaixo a frase da história, os critérios de
+   aceitação (requisito 12), o RICE (requisito 19) e onde ela está, com o "Mover para"
+   (requisito 8; HU11). {% endcomment %}
 {% block titulo %}{{ historia.titulo }} – {{ projeto.nome }}{% endblock %}
 {% block conteudo %}
-<h2>{{ historia.titulo }}</h2>
-<p><strong>Como um</strong> {{ historia.papel }}, <strong>eu quero</strong> {{ historia.acao }} <strong>para</strong> {{ historia.beneficio }}.</p>
-{% comment %} Em vez de um único critério (campos legados da história), a página
-   lista todos os critérios de aceitação, com opções de adicionar, editar e excluir
-   (requisito 12). {% endcomment %}
-<h3>Critérios de aceitação</h3>
-{% if criterios %}
-<table>
-  <tr><th>#</th><th>Dado</th><th>Quando</th><th>Então</th><th></th></tr>
-  {% for c in criterios %}
-  <tr>
-    <td>{{ forloop.counter }}</td>
-    <td>{{ c.dado }}</td>
-    <td>{{ c.quando }}</td>
-    <td>{{ c.entao }}</td>
-    <td><a href="{% url 'criterio_editar' projeto.id historia.id c.id %}">Editar</a> · <a href="{% url 'criterio_excluir' projeto.id historia.id c.id %}">Excluir</a></td>
-  </tr>
-  {% endfor %}
-</table>
-{% else %}
-<p class="vazio">Esta história ainda não tem critérios de aceitação.</p>
-{% endif %}
-<p><a class="botao" href="{% url 'criterio_criar' projeto.id historia.id %}">Adicionar critério</a></p>
-{% comment %} Onde a história está e para onde pode ir (requisito 8; HU11) {% endcomment %}
-<h3>Backlog</h3>
-<p>Está em: <strong>{% if historia.sprint_backlog %}<a href="{% url 'sprint_detalhe' projeto.id historia.sprint_backlog.id %}">{{ historia.sprint_backlog.nome }}</a>{% else %}Product Backlog{% endif %}</strong></p>
-{% if historia.sprint_backlog %}<p>Situação: <span class="situacao situacao-{{ historia.situacao }}">{{ historia.get_situacao_display }}</span></p>{% endif %}
-<p>Responsável: <strong>{% if historia.responsavel %}{{ historia.responsavel.first_name|default:historia.responsavel.email }}{% else %}Sem responsável{% endif %}</strong></p>
-{% if form_mover.fields.destino.choices %}
-<form method="post" action="{% url 'historia_mover' projeto.id historia.id %}">
-  {% csrf_token %}
-  <p>{{ form_mover.destino.label_tag }}{{ form_mover.destino }}</p>
-  <button class="botao" type="submit">Mover</button>
-</form>
-{% elif form_mover.no_sprint_fechado %}
-<p class="vazio">Esta história faz parte do histórico de um Sprint já encerrado ou cancelado e não se move mais.</p>
-{% else %}
-<p class="vazio">Não há outro backlog aberto neste projeto. Crie um Sprint Backlog para poder mover a história.</p>
-{% endif %}
-<h3>Priorização</h3>
-<table>
-  <tr><th>Épico</th><td>{% if historia.epico %}<a href="{% url 'epico_detalhe' projeto.id historia.epico.id %}">{{ historia.epico }}</a>{% else %}Sem épico{% endif %}</td></tr>
-  <tr><th>Story Points</th><td>{{ historia.story_points_display }}</td></tr>
-  <tr><th>MoSCoW</th><td>{{ historia.get_moscow_display|default:"Sem etiqueta" }}</td></tr>
-  <tr><th>Reach</th><td>{{ historia.reach|default_if_none:"—" }}</td></tr>
-  <tr><th>Impact</th><td>{{ historia.get_impact_display|default:"—" }}</td></tr>
-  <tr><th>Confidence</th><td>{{ historia.get_confidence_display|default:"—" }}</td></tr>
-  <tr><th>Effort</th><td>{{ historia.effort|default_if_none:"—" }}</td></tr>
-  <tr><th>Score RICE</th><td>{{ historia.rice_display }}</td></tr>
-</table>
-<p>
-  <a class="botao" href="{% url 'historia_editar' projeto.id historia.id %}">Editar</a>
-  <a class="botao perigo" href="{% url 'historia_excluir' projeto.id historia.id %}">Excluir</a>
-  <a class="botao secundario" href="{% url 'historia_lista' projeto.id %}">Voltar</a>
-</p>
+<div class="linha-titulo">
+  <div>
+    <h2>{{ historia.titulo }}</h2>
+    <div class="etiquetas-historia">
+      <span class="pill">{{ historia.story_points_display }}</span>
+      {% if historia.moscow %}<span class="pill moscow-{{ historia.moscow }}">{{ historia.get_moscow_display }}</span>{% else %}<span class="pill">Sem etiqueta MoSCoW</span>{% endif %}
+      {% if historia.epico %}<a class="pill pill-link" href="{% url 'epico_detalhe' projeto.id historia.epico.id %}">Épico: {{ historia.epico }}</a>{% else %}<span class="pill">Sem épico</span>{% endif %}
+      {% if historia.sprint_backlog %}<span class="situacao situacao-{{ historia.situacao }}">{{ historia.get_situacao_display }}</span>{% endif %}
+      {% if historia.responsavel %}<span class="responsavel"><span class="avatar">{{ historia.responsavel|iniciais }}</span> {{ historia.responsavel.first_name|default:historia.responsavel.email }}</span>{% else %}<span class="responsavel"><span class="avatar avatar-vazio">?</span> Sem responsável</span>{% endif %}
+    </div>
+  </div>
+  <div class="acoes">
+    <a class="botao" href="{% url 'historia_editar' projeto.id historia.id %}">Editar</a>
+    <a class="botao secundario" href="{% url 'historia_excluir' projeto.id historia.id %}">Excluir</a>
+  </div>
+</div>
+
+<div class="cartao frase-historia">
+  <strong>Como um</strong> {{ historia.papel }}, <strong>eu quero</strong> {{ historia.acao }} <strong>para</strong> {{ historia.beneficio }}.
+</div>
+
+<div class="grade-detalhe">
+  <section>
+    {% comment %} Todos os critérios de aceitação da história, com adicionar, editar e excluir (requisito 12). {% endcomment %}
+    <div class="linha-titulo"><h3>Critérios de aceitação</h3><a class="botao secundario" href="{% url 'criterio_criar' projeto.id historia.id %}">Adicionar critério</a></div>
+    {% if criterios %}
+    <table>
+      <tr><th>#</th><th>Dado</th><th>Quando</th><th>Então</th><th></th></tr>
+      {% for c in criterios %}
+      <tr>
+        <td>{{ forloop.counter }}</td>
+        <td>{{ c.dado }}</td>
+        <td>{{ c.quando }}</td>
+        <td>{{ c.entao }}</td>
+        <td class="nowrap"><a href="{% url 'criterio_editar' projeto.id historia.id c.id %}">Editar</a> · <a href="{% url 'criterio_excluir' projeto.id historia.id c.id %}">Excluir</a></td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="vazio">Esta história ainda não tem critérios de aceitação.</p>
+    {% endif %}
+  </section>
+
+  <aside>
+    <div class="cartao">
+      <h3>Priorização RICE</h3>
+      <div class="rice-score">{% if historia.rice_score is None %}<span class="sub">{{ historia.rice_display }}</span>{% else %}{{ historia.rice_display }}{% endif %}</div>
+      <table class="rice-tabela">
+        <tr><th>Reach</th><td>{{ historia.reach|default_if_none:"—" }}</td></tr>
+        <tr><th>Impact</th><td>{{ historia.get_impact_display|default:"—" }}</td></tr>
+        <tr><th>Confidence</th><td>{{ historia.get_confidence_display|default:"—" }}</td></tr>
+        <tr><th>Effort</th><td>{{ historia.effort|default_if_none:"—" }}</td></tr>
+      </table>
+      <p class="sub">(Reach × Impact × Confidence) ÷ Effort</p>
+    </div>
+
+    {% comment %} Onde a história está e para onde pode ir (requisito 8; HU11) {% endcomment %}
+    <div class="cartao">
+      <h3>Backlog</h3>
+      <p>Está em: <strong>{% if historia.sprint_backlog %}<a href="{% url 'sprint_detalhe' projeto.id historia.sprint_backlog.id %}">{{ historia.sprint_backlog.nome }}</a>{% else %}<a href="{% url 'product_backlog' projeto.id %}">Product Backlog</a>{% endif %}</strong></p>
+      {% if form_mover.fields.destino.choices %}
+      <form class="mover-linha" method="post" action="{% url 'historia_mover' projeto.id historia.id %}">
+        {% csrf_token %}
+        <select name="destino" aria-label="Mover para">{% for valor, nome in form_mover.fields.destino.choices %}<option value="{{ valor }}">{{ nome }}</option>{% endfor %}</select>
+        <button type="submit">Mover</button>
+      </form>
+      {% elif form_mover.no_sprint_fechado %}
+      <p class="vazio">Esta história faz parte do histórico de um Sprint já encerrado ou cancelado e não se move mais.</p>
+      {% else %}
+      <p class="vazio">Não há outro backlog aberto neste projeto. Crie um Sprint Backlog para poder mover a história.</p>
+      {% endif %}
+    </div>
+  </aside>
+</div>
+<p><a href="{% url 'historia_lista' projeto.id %}">← Voltar para as histórias</a></p>
 {% endblock %}

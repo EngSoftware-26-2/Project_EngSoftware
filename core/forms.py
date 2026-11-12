@@ -206,9 +206,26 @@ class HistoriaUsuarioForm(forms.ModelForm):
         self.fields['epico'].empty_label = 'Sem épico'
         self.fields['story_points'].choices = [('', 'Sem estimativa')] + HistoriaUsuario.STORY_POINTS_CHOICES
         self.fields['moscow'].choices = [('', 'Sem etiqueta')] + HistoriaUsuario.MOSCOW_CHOICES
-        self.fields['impact'].choices = [('', '---------')] + HistoriaUsuario.IMPACT_CHOICES
-        self.fields['confidence'].choices = [('', '---------')] + HistoriaUsuario.CONFIDENCE_CHOICES
-        self.fields['effort'].choices = [('', '---------')] + HistoriaUsuario.STORY_POINTS_CHOICES
+        self.fields['impact'].choices = [('', 'Não informado')] + HistoriaUsuario.IMPACT_CHOICES
+        self.fields['confidence'].choices = [('', 'Não informado')] + HistoriaUsuario.CONFIDENCE_CHOICES
+        self.fields['effort'].choices = [('', 'Não informado')] + HistoriaUsuario.STORY_POINTS_CHOICES
+        # Dicas embaixo de cada campo (passo da organização da história).
+        dicas = {
+            'titulo': 'Resumo curto da história. Ex.: Renovar empréstimo pelo site',
+            'papel': 'Quem vai usar. Ex.: leitor',
+            'acao': 'O que a pessoa quer fazer. Ex.: renovar um empréstimo pelo site',
+            'beneficio': 'Por que isso importa. Ex.: não precisar ir até a biblioteca',
+            'epico': 'Opcional. O épico agrupa histórias relacionadas.',
+            'story_points': 'Tamanho estimado: 0, 1, 2, 3, 5, 8, 13, 21, 34 ou 55.',
+            'moscow': 'Must, Should, Could ou Won\'t Have.',
+            'reach': 'Quantos usuários serão alcançados. Ex.: 500',
+            'impact': 'Massivo 3 · Alto 2 · Médio 1 · Baixo 0,5 · Mínimo 0,25',
+            'confidence': 'O quanto a equipe confia nas estimativas.',
+            'effort': 'Esforço na escala dos Story Points.',
+        }
+        for campo, dica in dicas.items():
+            self.fields[campo].help_text = dica
+        self.fields['titulo'].label = 'Título'
         # Responsável: só o dono e os membros do projeto aparecem na lista.
         if projeto is not None:
             participantes = User.objects.filter(
@@ -230,9 +247,9 @@ class HistoriaUsuarioForm(forms.ModelForm):
         # primeiro critério de aceitação. Os outros são adicionados depois, no detalhe da
         # história. Na edição esses campos não aparecem: os critérios têm CRUD próprio.
         if self.instance.pk is None:
-            self.fields['criterio_dado'] = forms.CharField(label='Dado', required=False, widget=forms.Textarea(attrs={'rows': 2}))
-            self.fields['criterio_quando'] = forms.CharField(label='Quando', required=False, max_length=255)
-            self.fields['criterio_entao'] = forms.CharField(label='Então', required=False, widget=forms.Textarea(attrs={'rows': 2}))
+            self.fields['criterio_dado'] = forms.CharField(label='Dado', required=False, widget=forms.Textarea(attrs={'rows': 2}), help_text='O contexto. Ex.: tenho um empréstimo ativo')
+            self.fields['criterio_quando'] = forms.CharField(label='Quando', required=False, max_length=255, widget=forms.Textarea(attrs={'rows': 2}), help_text='A ação. Ex.: clico em Renovar')
+            self.fields['criterio_entao'] = forms.CharField(label='Então', required=False, widget=forms.Textarea(attrs={'rows': 2}), help_text='O resultado. Ex.: a data de devolução muda')
 
     def clean(self):
         dados = super().clean()

@@ -152,6 +152,27 @@
     .mover-linha { display: flex; gap: 6px; margin: 0; }
     .mover-linha select { width: auto; max-width: 190px; padding: 5px 8px; font-size: .85em; }
     .mover-linha button { padding: 5px 10px; font-size: .82em; }
+    .form-blocos .bloco { padding: 18px 20px 6px; }
+    .form-blocos .bloco h3 { margin: 0 0 14px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+    .form-blocos .bloco h3 small { font-weight: 400; font-size: .8rem; }
+    .form-blocos .bloco > .sub { font-size: .82em; margin: -6px 0 14px; }
+    .form-blocos input, .form-blocos select, .form-blocos textarea { max-width: none; }
+    .linha-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .linha-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .etiquetas-historia { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+    .etiquetas-historia .pill { font-size: .78rem; padding: 3px 10px; }
+    .pill-link { text-decoration: none; }
+    .pill-link:hover { text-decoration: underline; }
+    .frase-historia { font-size: 1.05rem; line-height: 1.6; }
+    .grade-detalhe { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 20px; align-items: start; }
+    .grade-detalhe aside .cartao { margin-top: 0; }
+    .grade-detalhe aside h3 { margin: 0 0 8px; }
+    .rice-score { font-size: 1.8rem; font-weight: 700; color: var(--azul); margin-bottom: 6px; }
+    .rice-score .sub { font-size: 1rem; font-weight: 500; }
+    .rice-tabela { margin-top: 4px; }
+    .rice-tabela th { width: 45%; background: transparent; color: var(--cinza); font-weight: 500; }
+    .rice-tabela th, .rice-tabela td { padding: 6px 4px; }
+    @media (max-width: 860px) { .linha-3, .linha-4, .grade-detalhe { grid-template-columns: 1fr; } }
     .helptext { display: block; color: var(--cinza); font-size: .85em; }
     fieldset { border: 1px solid var(--borda); border-radius: var(--raio); margin: 16px 0; padding: 8px 16px; background: #fff; }
     .vazio { color: var(--cinza); font-style: italic; }
