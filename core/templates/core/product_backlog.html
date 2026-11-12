@@ -33,7 +33,7 @@
     <td class="sub">{{ forloop.counter }}</td>
     <td>
       <a href="{% url 'historia_detalhe' projeto.pk h.pk %}">{{ h.titulo }}</a>
-      {% if h.epico %}<br><span class="pill">{{ h.epico.titulo }}</span>{% endif %}
+      {% if h.epico or h.grande_demais or h.sem_criterios %}<div class="etiquetas-linha">{% if h.epico %}<span class="pill">{{ h.epico.titulo }}</span>{% endif %}{% include "core/_avisos_historia.html" with h=h %}</div>{% endif %}
     </td>
     <td class="nowrap">{{ h.story_points_display }}</td>
     <td>{% if h.moscow %}<span class="pill moscow-{{ h.moscow }}">{{ h.get_moscow_display }}</span>{% else %}<span class="sub">Sem etiqueta</span>{% endif %}</td>

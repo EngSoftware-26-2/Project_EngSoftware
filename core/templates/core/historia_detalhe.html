@@ -23,6 +23,12 @@
   </div>
 </div>
 
+{% if historia.grande_demais or historia.sem_criterios %}
+<div class="aviso">
+  {% if historia.grande_demais %}<p><strong>História grande:</strong> com {{ historia.story_points }} pontos, ela pode não caber em um Sprint. Considere dividi-la em histórias menores ou transformá-la em um épico.</p>{% endif %}
+  {% if historia.sem_criterios %}<p><strong>Sem critério de aceitação:</strong> adicione pelo menos um para o time saber quando a história está pronta.</p>{% endif %}
+</div>
+{% endif %}
 <div class="cartao frase-historia">
   <strong>Como um</strong> {{ historia.papel }}, <strong>eu quero</strong> {{ historia.acao }} <strong>para</strong> {{ historia.beneficio }}.
 </div>

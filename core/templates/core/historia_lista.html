@@ -8,7 +8,7 @@
   <tr><th>Título</th><th>Story Points</th><th>MoSCoW</th><th>RICE</th><th>Épico</th><th>Backlog</th></tr>
   {% for h in historias %}
   <tr>
-    <td><a href="{% url 'historia_detalhe' projeto.id h.id %}">{{ h.titulo }}</a></td>
+    <td><a href="{% url 'historia_detalhe' projeto.id h.id %}">{{ h.titulo }}</a> {% include "core/_avisos_historia.html" with h=h %}</td>
     <td>{{ h.story_points_display }}</td>
     <td>{{ h.moscow|default:"—" }}</td>
     <td>{{ h.rice_display }}</td>

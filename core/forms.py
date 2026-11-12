@@ -216,7 +216,7 @@ class HistoriaUsuarioForm(forms.ModelForm):
             'acao': 'O que a pessoa quer fazer. Ex.: renovar um empréstimo pelo site',
             'beneficio': 'Por que isso importa. Ex.: não precisar ir até a biblioteca',
             'epico': 'Opcional. O épico agrupa histórias relacionadas.',
-            'story_points': 'Tamanho estimado: 0, 1, 2, 3, 5, 8, 13, 21, 34 ou 55.',
+            'story_points': 'Tamanho estimado: 0, 1, 2, 3, 5, 8, 13, 21, 34 ou 55. Com 13 ou mais, considere dividir a história.',
             'moscow': 'Must, Should, Could ou Won\'t Have.',
             'reach': 'Quantos usuários serão alcançados. Ex.: 500',
             'impact': 'Massivo 3 · Alto 2 · Médio 1 · Baixo 0,5 · Mínimo 0,25',

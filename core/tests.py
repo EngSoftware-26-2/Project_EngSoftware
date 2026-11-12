@@ -1494,3 +1494,58 @@ class HistoriaTelasTests(TestCase):
         for texto in ("5 pts", "Must Have", "Épico: Empréstimos", "Em desenvolvimento", "Ana Souza"):
             self.assertIn(texto, topo)
         self.assertIn("<strong>Como um</strong> leitor", html)
+
+
+# Avisos de boas práticas (INVEST): história grande (13 pontos ou mais) e sem critério de
+# aceitação. São só avisos: a história é salva e movida normalmente.
+class AvisosHistoriaTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.projeto = Projeto.objects.create(nome="Projeto A", dono=self.dono)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def historia(self, pontos=None, **extra):
+        return HistoriaUsuario.objects.create(titulo="H", product_backlog=self.backlog, papel="a", acao="b",
+                                              beneficio="c", story_points=pontos, **extra)
+
+    def test_limite_de_13_pontos(self):
+        self.assertFalse(self.historia(8).grande_demais)
+        self.assertTrue(self.historia(13).grande_demais)
+        self.assertFalse(self.historia(None).grande_demais)
+
+    def test_sem_criterios(self):
+        h = self.historia(3)
+        self.assertTrue(h.sem_criterios)
+        CriterioAceitacao.objects.create(historia_usuario=h, dado="d", quando="q", entao="e")
+        self.assertFalse(h.sem_criterios)
+
+    def test_salva_mesmo_com_aviso_e_mostra_a_mensagem(self):
+        response = self.client.post(self.url("historia_criar"), {
+            "titulo": "Grande", "papel": "a", "acao": "b", "beneficio": "c", "story_points": "21"}, follow=True)
+        self.assertTrue(HistoriaUsuario.objects.filter(titulo="Grande").exists())
+        self.assertContains(response, "pode ser grande demais")
+        self.assertContains(response, "ainda não tem critério de aceitação")
+
+    def test_sem_aviso_quando_esta_tudo_certo(self):
+        response = self.client.post(self.url("historia_criar"), {
+            "titulo": "Pequena", "papel": "a", "acao": "b", "beneficio": "c", "story_points": "5",
+            "criterio_dado": "d", "criterio_quando": "q", "criterio_entao": "e"}, follow=True)
+        self.assertNotContains(response, "grande demais")
+        self.assertNotContains(response, "ainda não tem critério")
+
+    def test_etiquetas_aparecem_nas_listas_e_no_quadro(self):
+        grande = self.historia(34)
+        self.assertContains(self.client.get(self.url("product_backlog")), "Grande: dividir?")
+        self.assertContains(self.client.get(self.url("historia_lista")), "Sem critérios")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="S", **SPRINT_PERIODO)
+        self.client.post(self.url("historia_mover", grande.pk), {"destino": f"sprint-{sprint.pk}"})
+        grande.refresh_from_db()
+        self.assertEqual(grande.sprint_backlog, sprint)  # o aviso não impede mover
+        quadro = self.client.get(self.url("sprint_detalhe", sprint.pk))
+        self.assertContains(quadro, "Grande: dividir?")
+        self.assertContains(quadro, "Sem critérios")
+        self.assertContains(self.client.get(self.url("historia_detalhe", grande.pk)), "História grande:")

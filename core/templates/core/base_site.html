@@ -173,6 +173,11 @@
     .rice-tabela th { width: 45%; background: transparent; color: var(--cinza); font-weight: 500; }
     .rice-tabela th, .rice-tabela td { padding: 6px 4px; }
     @media (max-width: 860px) { .linha-3, .linha-4, .grade-detalhe { grid-template-columns: 1fr; } }
+    .mensagem.aviso-msg { background: #fff8e1; border-left-color: #e0a800; color: #6b4e00; }
+    .pill-aviso { background: #fff4d6; color: #8a6100; border: 1px solid #f0d58a; }
+    .etiquetas-linha { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .etiquetas-linha .pill { margin-top: 0; }
+    .aviso p { margin: 4px 0; }
     .helptext { display: block; color: var(--cinza); font-size: .85em; }
     fieldset { border: 1px solid var(--borda); border-radius: var(--raio); margin: 16px 0; padding: 8px 16px; background: #fff; }
     .vazio { color: var(--cinza); font-style: italic; }
@@ -194,7 +199,7 @@
   <div class="pagina">
     {% block cabecalho %}{% endblock %}
     {% comment %} Mensagens de sucesso em verde e de erro em vermelho {% endcomment %}
-    {% for m in messages %}<div class="mensagem{% if m.tags == 'error' %} erro-msg{% endif %}" role="alert">{{ m }}</div>{% endfor %}
+    {% for m in messages %}<div class="mensagem{% if m.tags == 'error' %} erro-msg{% elif m.tags == 'warning' %} aviso-msg{% endif %}" role="alert">{{ m }}</div>{% endfor %}
     <main>{% block conteudo %}{% endblock %}</main>
   </div>
 </body>

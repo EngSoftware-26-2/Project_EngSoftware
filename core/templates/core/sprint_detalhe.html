@@ -31,6 +31,7 @@
         <span class="pill">{{ h.story_points_display }}</span>
         {% if h.moscow %}<span class="pill moscow-{{ h.moscow }}">{{ h.get_moscow_display }}</span>{% endif %}
         {% if h.epico %}<span class="pill">{{ h.epico }}</span>{% endif %}
+        {% include "core/_avisos_historia.html" with h=h %}
       </div>
       <div class="responsavel">
         {% if h.responsavel %}<span class="avatar">{{ h.responsavel|iniciais }}</span> {{ h.responsavel.first_name|default:h.responsavel.email }}

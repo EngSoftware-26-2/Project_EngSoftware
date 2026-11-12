@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.db.models.deletion import ProtectedError
 
 from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAceitacao, SprintBacklog
@@ -312,7 +312,7 @@ def product_backlog(request, pk):
     backlog = get_object_or_404(ProductBacklog, projeto=projeto)
     historias = list(backlog.historias.select_related("epico", "responsavel").filter(
         sprint_backlog__isnull=True,
-    ).filter(Q(epico__isnull=True) | Q(epico__projeto=projeto)))
+    ).filter(Q(epico__isnull=True) | Q(epico__projeto=projeto)).annotate(num_criterios=Count("criterios_aceitacao")))
     # Ordem de prioridade: primeiro o MoSCoW (Must, Should, Could, Won't, sem etiqueta) e,
     # dentro de cada etiqueta, o maior score RICE primeiro. RICE incompleto ou não calculável
     # fica depois dos calculados. Empate: ordem alfabética.
@@ -415,13 +415,23 @@ def obter_historia(projeto, historia_id):
     return get_object_or_404(historias_visiveis(projeto), pk=historia_id)
 
 
+def avisar_historia(request, historia):
+    # Avisos de boas práticas depois de salvar; a história é salva do mesmo jeito.
+    if historia.grande_demais:
+        messages.warning(request, f"Com {historia.story_points} pontos, a história pode ser grande demais "
+                                  "para um Sprint. Considere dividi-la em histórias menores.")
+    if historia.sem_criterios:
+        messages.warning(request, "A história ainda não tem critério de aceitação. Adicione pelo menos um "
+                                  "para o time saber quando ela está pronta.")
+
+
 # HU12 a HU14 - Lista de todas as histórias do projeto (em qualquer backlog)
 @login_required(login_url="login")
 def historia_lista(request, pk):
     projeto = projeto_acessivel(request.user, pk)
     return render(request, "core/historia_lista.html", {
         "projeto": projeto,
-        "historias": historias_visiveis(projeto).order_by("titulo"),
+        "historias": historias_visiveis(projeto).annotate(num_criterios=Count("criterios_aceitacao")).order_by("titulo"),
     })
 
 
@@ -438,8 +448,9 @@ def historia_criar(request, pk):
     historia = HistoriaUsuario(product_backlog=backlog)
     form = HistoriaUsuarioForm(request.POST or None, instance=historia, projeto=projeto)
     if request.method == "POST" and form.is_valid():
-        form.save()
+        nova = form.save()
         messages.success(request, "História criada no Product Backlog.")
+        avisar_historia(request, nova)
         return redirect("historia_lista", pk=projeto.pk)
     return render(request, "core/historia_form.html", {"projeto": projeto, "form": form, "acao": "Nova história"})
 
@@ -468,6 +479,7 @@ def historia_editar(request, pk, historia_id):
         # calculada a partir dos campos salvos.
         form.save()
         messages.success(request, "História atualizada.")
+        # Na edição os avisos não viram mensagem: a página da história já os mostra.
         return redirect("historia_detalhe", pk=projeto.pk, historia_id=historia.pk)
     return render(request, "core/historia_form.html", {"projeto": projeto, "form": form, "acao": "Editar história", "historia": historia})
 
@@ -668,7 +680,8 @@ def sprint_detalhe(request, pk, sprint_id):
             "antecipado": sprint.encerrado_em and sprint.encerrado_em < sprint.data_fim,
             "dias_antes": (sprint.data_fim - sprint.encerrado_em).days if sprint.encerrado_em else 0,
         })
-    historias = list(sprint.historias.select_related("epico", "responsavel").order_by("titulo"))
+    historias = list(sprint.historias.select_related("epico", "responsavel")
+                     .annotate(num_criterios=Count("criterios_aceitacao")).order_by("titulo"))
     total_pontos = sum(h.story_points or 0 for h in historias)
     # Quadro Kanban: uma coluna por situação, com quantas histórias e pontos cada uma tem.
     colunas = []

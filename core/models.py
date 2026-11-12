@@ -339,6 +339,26 @@ class HistoriaUsuario(models.Model):
         score = self.rice_score
         return f"{score:g}" if score == int(score) else f"{score:.2f}"
 
+    # ------------------------------------------------------------------
+    # Avisos de boas práticas (INVEST). Não bloqueiam nada, só aparecem nas telas.
+    # ------------------------------------------------------------------
+    # "Small": com 13 pontos ou mais, a história costuma ser grande demais para um Sprint e
+    # vale dividir (ou transformar em épico).
+    LIMITE_HISTORIA_GRANDE = 13
+
+    @property
+    def grande_demais(self):
+        return self.story_points is not None and self.story_points >= self.LIMITE_HISTORIA_GRANDE
+
+    # "Testável": sem critério de aceitação não há como confirmar que a história está pronta.
+    # As listas usam annotate(num_criterios=...) para não fazer uma consulta por história.
+    @property
+    def sem_criterios(self):
+        quantidade = getattr(self, "num_criterios", None)
+        if quantidade is None:
+            quantidade = self.criterios_aceitacao.count() if self.pk else 0
+        return quantidade == 0
+
     @property
     def story_points_display(self):
         return "sem estimativa" if self.story_points is None else f"{self.story_points} pts"
