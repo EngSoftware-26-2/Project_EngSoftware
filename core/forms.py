@@ -4,10 +4,13 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db.models import Q
+from django.utils import timezone
+from datetime import timedelta
 from .validadores import (
     EMAIL_DICA, EMAIL_MAX, NOME_DICA, NOME_MAX, SENHA_DICA, SENHA_MAX,
     validar_nome, validar_senha,
 )
+from .sprints import sprint_em_conflito
 from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAceitacao, SprintBacklog
 
 # HU01 - Formulário de cadastro: o e-mail é usado como login (username) e não pode repetir.
@@ -219,7 +222,7 @@ class HistoriaUsuarioForm(forms.ModelForm):
         self.fields['responsavel'].help_text = 'Dono ou membro do projeto.'
         # A situação só faz sentido com a história em um Sprint. No Product Backlog o campo
         # não aparece (a história fica "A fazer").
-        if self.instance.sprint_backlog_id is None:
+        if self.instance.sprint_backlog_id is None or self.instance.sprint_backlog.fechado:
             del self.fields['situacao']
         else:
             self.fields['situacao'].help_text = 'Em que coluna do quadro do Sprint a história está.'
@@ -287,6 +290,44 @@ class SprintBacklogForm(forms.ModelForm):
             'data_fim': {'required': 'Informe a data de fim.', 'invalid': 'Informe uma data válida.'},
         }
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['nome'].help_text = 'Ex.: Sprint 3 ou Correção de bugs'
+        self.fields['data_inicio'].help_text = 'A partir de hoje, até 1 ano à frente.'
+        self.fields['data_fim'].help_text = f'No máximo {SprintBacklog.DURACAO_MAXIMA_DIAS} dias de Sprint, contando o dia de início.'
+
+    def clean(self):
+        # Regras de datas do Sprint:
+        #  - duração máxima de 30 dias (Scrum Guide: "um mês ou menos"); não há mínimo, para
+        #    permitir Sprints curtos, como um de correção de bugs;
+        #  - a data de início não pode ser antes de hoje nem mais de 1 ano à frente. Ao editar
+        #    um Sprint que já começou, a data de início antiga continua valendo;
+        #  - um Sprint por vez no projeto: as datas não podem coincidir com as de outro.
+        dados = super().clean()
+        inicio, fim = dados.get('data_inicio'), dados.get('data_fim')
+        hoje = timezone.localdate()
+        if inicio:
+            inicio_mudou = self.instance.pk is None or inicio != self.instance.data_inicio
+            if inicio_mudou and inicio < hoje:
+                self.add_error('data_inicio', f'A data de início não pode ser antes de hoje ({hoje:%d/%m/%Y}).')
+            limite = hoje + timedelta(days=365)
+            if inicio_mudou and inicio > limite:
+                self.add_error('data_inicio', f'A data de início pode ser no máximo 1 ano à frente (até {limite:%d/%m/%Y}).')
+        if inicio and fim:
+            if fim < inicio:
+                self.add_error('data_fim', 'A data de fim não pode ser anterior à data de início.')
+            elif (fim - inicio).days + 1 > SprintBacklog.DURACAO_MAXIMA_DIAS:
+                self.add_error('data_fim', f'O Sprint pode durar no máximo {SprintBacklog.DURACAO_MAXIMA_DIAS} dias.')
+            if not self.errors:
+                conflito = sprint_em_conflito(self.instance.projeto, inicio, fim, ignorar_pk=self.instance.pk)
+                if conflito:
+                    raise forms.ValidationError(
+                        f'Já existe um Sprint nesse período: {conflito.nome} '
+                        f'({conflito.data_inicio:%d/%m/%Y} a {conflito.fim_efetivo:%d/%m/%Y}). '
+                        'O projeto tem um Sprint por vez; escolha datas fora desse período.'
+                    )
+        return dados
+
     def _post_clean(self):
         # Se alguma data faltou, o erro do próprio campo já avisa; evita repetir a mensagem
         # genérica do model ("deve informar as datas de início e fim").
@@ -312,14 +353,18 @@ class MoverHistoriaForm(forms.Form):
         self.historia = historia
         opcoes = []
         backlog = ProductBacklog.objects.filter(projeto=projeto).first()
-        if backlog is not None and historia.product_backlog_id != backlog.pk:
-            opcoes.append((self.DESTINO_PRODUCT_BACKLOG, 'Product Backlog'))
-        for sprint in projeto.sprint_backlogs.order_by('data_inicio', 'pk'):
-            if sprint.pk != historia.sprint_backlog_id:
-                opcoes.append((f'sprint-{sprint.pk}', sprint.nome))
+        # Uma história concluída num Sprint já encerrado ou cancelado faz parte do histórico
+        # dele e não se move mais. E Sprints fechados não recebem histórias novas.
+        self.no_sprint_fechado = bool(historia.sprint_backlog_id and historia.sprint_backlog.fechado)
+        if not self.no_sprint_fechado:
+            if backlog is not None and historia.product_backlog_id != backlog.pk:
+                opcoes.append((self.DESTINO_PRODUCT_BACKLOG, 'Product Backlog'))
+            for sprint in projeto.sprint_backlogs.order_by('data_inicio', 'pk'):
+                if sprint.pk != historia.sprint_backlog_id and not sprint.fechado:
+                    opcoes.append((f'sprint-{sprint.pk}', f'{sprint.nome} ({sprint.status_nome})'))
         self.fields['destino'].choices = opcoes
         self.backlog = backlog
-        self.sprints = {f'sprint-{s.pk}': s for s in projeto.sprint_backlogs.all()}
+        self.sprints = {f'sprint-{s.pk}': s for s in projeto.sprint_backlogs.all() if not s.fechado}
 
     def mover(self):
         # Uma história fica em um backlog por vez (Artefato 7): ao entrar em um, sai do outro.
@@ -335,3 +380,12 @@ class MoverHistoriaForm(forms.Form):
             nome = sprint.nome
         self.historia.save()
         return nome
+
+
+# Cancelar Sprint: o motivo é opcional e fica registrado na página do Sprint.
+class CancelarSprintForm(forms.Form):
+    motivo = forms.CharField(
+        label='Motivo', required=False, max_length=500,
+        widget=forms.Textarea(attrs={'rows': 3}),
+        help_text='Se quiser, explique por que o Sprint foi cancelado. Fica registrado na página do Sprint.',
+    )

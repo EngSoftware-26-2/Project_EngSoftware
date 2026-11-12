@@ -4,14 +4,22 @@ from django.db import IntegrityError, connection, transaction
 from django.db.models.deletion import ProtectedError
 from django.test import Client, TestCase, TransactionTestCase
 from django.urls import reverse
-from datetime import date
+from datetime import date, timedelta
 
 from .models import Projeto, ProductBacklog, HistoriaUsuario, Epico, SprintBacklog, CriterioAceitacao
 
 
+def dia(n):
+    """Data de hoje + n dias, no formato do formulário (AAAA-MM-DD)."""
+    return (date.today() + timedelta(days=n)).isoformat()
+
+
+# Período de Sprint em andamento, relativo a hoje. Com datas fixas, o Sprint dos testes
+# passaria a ser encerrado sozinho quando a data de fim ficasse no passado.
+_HOJE = date.today()
 SPRINT_PERIODO = {
-    "data_inicio": date(2026, 11, 1),
-    "data_fim": date(2026, 11, 7),
+    "data_inicio": _HOJE - timedelta(days=2),
+    "data_fim": _HOJE + timedelta(days=7),
 }
 
 
@@ -604,9 +612,9 @@ class AjustesMembrosTests(TestCase):
 class MigracaoIntegridadeTests(TransactionTestCase):
     antiga = ("core", "0003_alter_projeto_dono")
     # Os testes usam o model atual (que tem Effort, critérios de aceitação, período de
-    # Sprint, situação e responsável) depois de migrar, então o banco precisa chegar na
+    # Sprint, situação, responsável e encerramento do Sprint) depois de migrar, então o banco precisa chegar na
     # última migration.
-    atual = ("core", "0008_historia_situacao_responsavel")
+    atual = ("core", "0009_sprint_encerramento")
 
     def setUp(self):
         from django.db.migrations.executor import MigrationExecutor
@@ -934,7 +942,8 @@ class SprintBacklogViewsTests(TestCase):
         return reverse(nome, args=[self.projeto.pk, *args])
 
     def dados(self, **extra):
-        d = {"nome": "Sprint 1", "data_inicio": "2026-11-09", "data_fim": "2026-11-20"}
+        # Datas relativas a hoje: a data de início não pode ser no passado.
+        d = {"nome": "Sprint 1", "data_inicio": dia(0), "data_fim": dia(11)}
         d.update(extra)
         return d
 
@@ -947,7 +956,7 @@ class SprintBacklogViewsTests(TestCase):
         self.assertContains(self.client.get(self.url("sprint_lista")), "Sprint 1")
 
     def test_hu09_data_fim_antes_do_inicio(self):
-        resp = self.client.post(self.url("sprint_criar"), self.dados(data_fim="2026-11-01"))
+        resp = self.client.post(self.url("sprint_criar"), self.dados(data_fim=dia(-1)))
         self.assertContains(resp, "A data de fim não pode ser anterior à data de início.")
         self.assertFalse(SprintBacklog.objects.exists())
 
@@ -959,15 +968,17 @@ class SprintBacklogViewsTests(TestCase):
 
     def test_hu09_varios_sprints_no_mesmo_projeto(self):
         self.client.post(self.url("sprint_criar"), self.dados())
-        self.client.post(self.url("sprint_criar"), self.dados(nome="Sprint 2", data_inicio="2026-11-23", data_fim="2026-12-04"))
+        self.client.post(self.url("sprint_criar"), self.dados(nome="Sprint 2", data_inicio=dia(14), data_fim=dia(25)))
         self.assertEqual(self.projeto.sprint_backlogs.count(), 2)
 
     def test_hu10_editar_sprint(self):
         sprint = SprintBacklog.objects.create(projeto=self.projeto, **SPRINT_PERIODO, nome="Sprint 1")
-        self.client.post(self.url("sprint_editar", sprint.pk), self.dados(nome="Sprint Um", data_fim="2026-11-27"))
+        # Sprint em andamento: a data de início antiga (no passado) continua valendo.
+        inicio = SPRINT_PERIODO["data_inicio"].isoformat()
+        self.client.post(self.url("sprint_editar", sprint.pk), self.dados(nome="Sprint Um", data_inicio=inicio, data_fim=dia(15)))
         sprint.refresh_from_db()
         self.assertEqual(sprint.nome, "Sprint Um")
-        self.assertEqual(str(sprint.data_fim), "2026-11-27")
+        self.assertEqual(sprint.data_fim.isoformat(), dia(15))
 
     def test_hu10_excluir_sprint_devolve_historias_ao_product_backlog(self):
         sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1", **SPRINT_PERIODO)
@@ -1185,3 +1196,184 @@ class SituacaoResponsavelTests(TestCase):
         self.client.post(reverse("remover_membro", args=[self.projeto.pk, self.membro.pk]))
         self.historia.refresh_from_db()
         self.assertIsNone(self.historia.responsavel)
+
+
+# Regras de datas do Sprint, status, encerrar, cancelar e histórico
+class SprintRegrasTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.membro = User.objects.create_user("rui", email="rui@exemplo.com", first_name="Rui Dias")
+        self.projeto = Projeto.objects.create(nome="Projeto R", dono=self.dono)
+        self.projeto.membros.add(self.membro)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def criar(self, inicio, fim, nome="Sprint X"):
+        return self.client.post(self.url("sprint_criar"), {"nome": nome, "data_inicio": inicio, "data_fim": fim})
+
+    def sprint(self, ini, fim, nome="Sprint 1", **extra):
+        hoje = date.today()
+        return SprintBacklog.objects.create(projeto=self.projeto, nome=nome,
+                                            data_inicio=hoje + timedelta(days=ini),
+                                            data_fim=hoje + timedelta(days=fim), **extra)
+
+    def historia(self, sprint, titulo, situacao="a_fazer", pontos=3):
+        return HistoriaUsuario.objects.create(titulo=titulo, sprint_backlog=sprint, papel="a", acao="b",
+                                              beneficio="c", story_points=pontos, situacao=situacao)
+
+    def erros(self, response, campo):
+        return response.context["form"].errors.get(campo, [])
+
+    # --- datas ---
+    def test_duracao_maxima_de_30_dias(self):
+        self.assertEqual(self.criar(dia(0), dia(29)).status_code, 302)  # 30 dias
+        SprintBacklog.objects.all().delete()
+        response = self.criar(dia(0), dia(30))  # 31 dias
+        self.assertIn("O Sprint pode durar no máximo 30 dias.", self.erros(response, "data_fim"))
+        self.assertFalse(SprintBacklog.objects.exists())
+
+    def test_sprint_de_um_dia_e_aceito(self):
+        self.assertEqual(self.criar(dia(0), dia(0)).status_code, 302)
+
+    def test_inicio_a_partir_de_hoje(self):
+        response = self.criar(dia(-1), dia(5))
+        self.assertTrue(any("não pode ser antes de hoje" in e for e in self.erros(response, "data_inicio")))
+        self.assertFalse(SprintBacklog.objects.exists())
+        self.assertEqual(self.criar(dia(0), dia(5)).status_code, 302)
+
+    def test_inicio_no_maximo_um_ano_a_frente(self):
+        response = self.criar(dia(366), dia(370))
+        self.assertTrue(any("no máximo 1 ano à frente" in e for e in self.erros(response, "data_inicio")))
+        self.assertEqual(self.criar(dia(365), dia(370)).status_code, 302)
+
+    def test_um_sprint_por_vez(self):
+        self.criar(dia(0), dia(11), "Sprint 1")
+        response = self.criar(dia(11), dia(20), "Sprint 2")  # coincide no último dia
+        self.assertTrue(any("Já existe um Sprint nesse período: Sprint 1" in e for e in response.context["form"].non_field_errors()))
+        self.assertEqual(self.criar(dia(12), dia(20), "Sprint 2").status_code, 302)  # começa no dia seguinte
+        self.assertEqual(self.projeto.sprint_backlogs.count(), 2)
+
+    def test_sprint_cancelado_ou_encerrado_antes_libera_as_datas(self):
+        cancelado = self.sprint(0, 10, cancelado=True, encerrado_em=date.today())
+        self.assertEqual(self.criar(dia(0), dia(10), "Sprint novo").status_code, 302)
+        SprintBacklog.objects.exclude(pk=cancelado.pk).delete()
+        self.sprint(-5, 10, nome="Encerrado", encerrado_em=date.today() + timedelta(days=0))
+        self.assertEqual(self.criar(dia(1), dia(5), "Seguinte").status_code, 302)
+
+    # --- status ---
+    def test_status_calculado_pelas_datas(self):
+        hoje = date.today()
+        s = SprintBacklog(projeto=self.projeto, nome="S", data_inicio=hoje, data_fim=hoje + timedelta(days=5))
+        self.assertEqual(s.status_em(hoje - timedelta(days=1)), "planejado")
+        self.assertEqual(s.status_em(hoje), "em_andamento")
+        self.assertEqual(s.status_em(hoje + timedelta(days=5)), "em_andamento")
+        self.assertEqual(s.status_em(hoje + timedelta(days=6)), "concluido")
+        s.cancelado = True
+        self.assertEqual(s.status_em(hoje), "cancelado")
+
+    def test_lista_mostra_a_situacao_de_cada_sprint(self):
+        self.sprint(-20, -15, nome="Antigo")
+        self.sprint(-2, 5, nome="Atual")
+        response = self.client.get(self.url("sprint_lista"))
+        self.assertContains(response, "Em andamento")
+        self.assertContains(response, "Concluído")
+
+    # --- encerrar ---
+    def test_dono_encerra_e_nao_concluidas_voltam_ao_product_backlog(self):
+        sprint = self.sprint(-3, 7)
+        feita = self.historia(sprint, "Feita", "concluida", 5)
+        andando = self.historia(sprint, "Andando", "em_desenvolvimento", 3)
+        parada = self.historia(sprint, "Parada", "a_fazer", 2)
+        confirmacao = self.client.get(self.url("sprint_encerrar", sprint.pk))
+        self.assertContains(confirmacao, "2 histórias não concluídas voltarão para o Product Backlog")
+        sprint.refresh_from_db()
+        self.assertIsNone(sprint.encerrado_em)  # a tela de confirmação não encerra
+
+        self.client.post(self.url("sprint_encerrar", sprint.pk))
+        sprint.refresh_from_db()
+        self.assertEqual(sprint.encerrado_em, date.today())
+        self.assertEqual(sprint.encerrado_por, self.dono)
+        self.assertEqual(sprint.status, "concluido")
+        for h in (feita, andando, parada):
+            h.refresh_from_db()
+        self.assertEqual(feita.sprint_backlog, sprint)
+        self.assertEqual(andando.product_backlog, self.backlog)
+        self.assertEqual(andando.situacao, "a_fazer")
+        registros = {d.titulo: d for d in sprint.historias_devolvidas.all()}
+        self.assertEqual(set(registros), {"Andando", "Parada"})
+        self.assertEqual(registros["Andando"].situacao, "em_desenvolvimento")
+        self.assertEqual(registros["Andando"].story_points, 3)
+
+        historico = self.client.get(self.url("sprint_detalhe", sprint.pk))
+        self.assertTemplateUsed(historico, "core/sprint_historico.html")
+        self.assertContains(historico, "5 pts")
+        self.assertContains(historico, "Voltaram para o Product Backlog")
+        self.assertContains(historico, "antes do previsto")
+
+    def test_membro_nao_encerra_nem_cancela(self):
+        sprint = self.sprint(-3, 7)
+        self.client.force_login(self.membro)
+        self.assertNotContains(self.client.get(self.url("sprint_detalhe", sprint.pk)), "Encerrar Sprint")
+        self.client.post(self.url("sprint_encerrar", sprint.pk))
+        self.client.post(self.url("sprint_cancelar", sprint.pk), {"motivo": "x"})
+        sprint.refresh_from_db()
+        self.assertIsNone(sprint.encerrado_em)
+        self.assertFalse(sprint.cancelado)
+
+    def test_sprint_planejado_nao_e_encerrado_mas_pode_ser_cancelado(self):
+        sprint = self.sprint(3, 10)
+        self.client.post(self.url("sprint_encerrar", sprint.pk))
+        sprint.refresh_from_db()
+        self.assertIsNone(sprint.encerrado_em)
+        self.client.post(self.url("sprint_cancelar", sprint.pk), {"motivo": ""})
+        sprint.refresh_from_db()
+        self.assertTrue(sprint.cancelado)
+
+    # --- cancelar ---
+    def test_cancelar_com_motivo_fica_registrado(self):
+        sprint = self.sprint(-3, 7)
+        self.historia(sprint, "Relatórios", "em_desenvolvimento")
+        self.client.post(self.url("sprint_cancelar", sprint.pk), {"motivo": "O cliente suspendeu o módulo."})
+        sprint.refresh_from_db()
+        self.assertTrue(sprint.cancelado)
+        self.assertEqual(sprint.status, "cancelado")
+        self.assertEqual(sprint.motivo_cancelamento, "O cliente suspendeu o módulo.")
+        self.assertEqual(HistoriaUsuario.objects.get(titulo="Relatórios").product_backlog, self.backlog)
+        pagina = self.client.get(self.url("sprint_detalhe", sprint.pk))
+        self.assertContains(pagina, "Sprint cancelado em")
+        self.assertContains(pagina, "Motivo: O cliente suspendeu o módulo.")
+
+    # --- encerramento automático ---
+    def test_sprint_vencido_e_encerrado_sozinho(self):
+        sprint = self.sprint(-10, -1)
+        pendente = self.historia(sprint, "Pendente", "em_desenvolvimento")
+        self.client.get(self.url("sprint_lista"))
+        sprint.refresh_from_db()
+        pendente.refresh_from_db()
+        self.assertEqual(sprint.encerrado_em, sprint.data_fim)
+        self.assertIsNone(sprint.encerrado_por)
+        self.assertEqual(pendente.product_backlog, self.backlog)
+        self.assertContains(self.client.get(self.url("sprint_detalhe", sprint.pk)), "encerrado automaticamente")
+
+    # --- Sprint fechado não muda ---
+    def test_sprint_fechado_nao_muda_mais(self):
+        fechado = self.sprint(-10, -1, nome="Fechado")
+        feita = self.historia(fechado, "Feita", "concluida")
+        aberto = self.sprint(0, 5, nome="Aberto")
+        no_pb = HistoriaUsuario.objects.create(titulo="No PB", product_backlog=self.backlog, papel="a", acao="b", beneficio="c")
+        self.client.get(self.url("sprint_lista"))  # encerra o vencido
+
+        self.client.post(self.url("historia_situacao", feita.pk), {"situacao": "a_fazer"})
+        feita.refresh_from_db()
+        self.assertEqual(feita.situacao, "concluida")
+
+        detalhe = self.client.get(self.url("historia_detalhe", no_pb.pk))
+        destinos = [v for v, _ in detalhe.context["form_mover"].fields["destino"].choices]
+        self.assertIn(f"sprint-{aberto.pk}", destinos)
+        self.assertNotIn(f"sprint-{fechado.pk}", destinos)
+        self.assertEqual(self.client.get(self.url("historia_detalhe", feita.pk)).context["form_mover"].fields["destino"].choices, [])
+
+        self.assertRedirects(self.client.get(self.url("sprint_editar", fechado.pk)), self.url("sprint_detalhe", fechado.pk))

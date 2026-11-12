@@ -49,13 +49,71 @@ class SprintBacklog(models.Model):
     data_inicio = models.DateField("Data de início")
     data_fim = models.DateField("Data de fim")
 
+    # Encerramento e cancelamento. O Sprint pode ser encerrado antes do previsto ("Encerrar
+    # Sprint") ou cancelado quando o trabalho deixa de fazer sentido ("Cancelar Sprint"); nos
+    # dois casos só o dono do projeto decide (no Scrum, o Product Owner). Quando passa a data
+    # de fim sem ninguém encerrar, o sistema encerra sozinho (encerrado_por fica vazio).
+    encerrado_em = models.DateField("Encerrado em", null=True, blank=True)
+    encerrado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="sprints_encerrados", verbose_name="Encerrado por",
+    )
+    cancelado = models.BooleanField("Cancelado", default=False)
+    motivo_cancelamento = models.TextField("Motivo", blank=True)
+
+    # Situação do Sprint, calculada: não é guardada no banco, então nunca fica desatualizada.
+    STATUS_PLANEJADO = "planejado"
+    STATUS_EM_ANDAMENTO = "em_andamento"
+    STATUS_CONCLUIDO = "concluido"
+    STATUS_CANCELADO = "cancelado"
+    STATUS_NOMES = {
+        STATUS_PLANEJADO: "Planejado",
+        STATUS_EM_ANDAMENTO: "Em andamento",
+        STATUS_CONCLUIDO: "Concluído",
+        STATUS_CANCELADO: "Cancelado",
+    }
+    DURACAO_MAXIMA_DIAS = 30
+
     class Meta:
         constraints = [
             models.CheckConstraint(
                 condition=Q(data_fim__gte=F("data_inicio")),
                 name="sprint_periodo_valido",
             ),
+            # Cancelado sempre tem a data do cancelamento.
+            models.CheckConstraint(
+                condition=Q(cancelado=False) | Q(encerrado_em__isnull=False),
+                name="sprint_cancelado_com_data",
+            ),
         ]
+
+    def status_em(self, hoje):
+        if self.cancelado:
+            return self.STATUS_CANCELADO
+        if self.encerrado_em is not None or hoje > self.data_fim:
+            return self.STATUS_CONCLUIDO
+        if hoje < self.data_inicio:
+            return self.STATUS_PLANEJADO
+        return self.STATUS_EM_ANDAMENTO
+
+    @property
+    def status(self):
+        from django.utils import timezone
+        return self.status_em(timezone.localdate())
+
+    @property
+    def status_nome(self):
+        return self.STATUS_NOMES[self.status]
+
+    @property
+    def fechado(self):
+        # Concluído ou cancelado: a página vira histórico e o quadro não muda mais.
+        return self.status in (self.STATUS_CONCLUIDO, self.STATUS_CANCELADO)
+
+    @property
+    def fim_efetivo(self):
+        # Até quando o Sprint ocupou o calendário. Encerrado antes, libera os dias seguintes.
+        return self.encerrado_em if self.encerrado_em and self.encerrado_em < self.data_fim else self.data_fim
 
     def clean(self):
         super().clean()
@@ -306,3 +364,21 @@ class CriterioAceitacao(models.Model):
 
     def __str__(self):
         return f"Critério de aceitação da história {self.historia_usuario_id}"
+
+
+# Histórico do Sprint encerrado ou cancelado: as histórias que não foram concluídas voltam
+# para o Product Backlog, e esta tabela guarda como elas estavam no dia (título, pontos e
+# situação), para a página do Sprint mostrar o que ficou para depois.
+class HistoriaDevolvida(models.Model):
+    sprint = models.ForeignKey(SprintBacklog, on_delete=models.CASCADE, related_name="historias_devolvidas")
+    # Se a história for excluída depois, o registro continua, só sem o link.
+    historia = models.ForeignKey(HistoriaUsuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="devolucoes")
+    titulo = models.CharField("Título", max_length=200)
+    story_points = models.IntegerField("Story Points", null=True, blank=True)
+    situacao = models.CharField("Situação no encerramento", max_length=20, choices=HistoriaUsuario.SITUACAO_CHOICES)
+
+    class Meta:
+        ordering = ["titulo"]
+
+    def __str__(self):
+        return f"{self.titulo} ({self.sprint.nome})"

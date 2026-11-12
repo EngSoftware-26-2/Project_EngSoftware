@@ -17,8 +17,10 @@ from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAce
 from .forms import (
     CadastroForm, LoginForm, ProjetoForm, AdicionarMembroForm, ProductBacklogForm,
     EpicoForm, HistoriaUsuarioForm, CriterioAceitacaoForm, SprintBacklogForm,
-    MoverHistoriaForm,
+    MoverHistoriaForm, CancelarSprintForm,
 )
+from django.utils import timezone
+from .sprints import SemProductBacklog, encerrar_sprints_vencidos, fechar_sprint, historias_nao_concluidas
 
 # HU01 - Cadastro
 def cadastro(request):
@@ -250,10 +252,14 @@ def sair_projeto(request, pk):
 # Projeto que o usuário pode acessar (dono ou membro). Para os outros usuários, o projeto
 # "não existe" (404), assim ninguém descobre projetos alheios pelo endereço (HU05).
 def projeto_acessivel(usuario, pk):
-    return get_object_or_404(
+    projeto = get_object_or_404(
         Projeto.objects.filter(Q(dono=usuario) | Q(membros=usuario)).distinct(),
         pk=pk,
     )
+    # Sprints cuja data de fim já passou são encerrados aqui, na primeira vez que alguém
+    # abre o projeto depois do prazo (as histórias não concluídas voltam ao Product Backlog).
+    encerrar_sprints_vencidos(projeto)
+    return projeto
 
 
 # HU05 - Detalhe do projeto (quem não participa volta para a lista de projetos)
@@ -591,10 +597,26 @@ def obter_sprint(projeto, sprint_id):
 @login_required(login_url="login")
 def sprint_lista(request, pk):
     projeto = projeto_acessivel(request.user, pk)
-    return render(request, "core/sprint_lista.html", {
-        "projeto": projeto,
-        "sprints": projeto.sprint_backlogs.prefetch_related("historias").order_by("data_inicio", "pk"),
-    })
+    sprints = list(projeto.sprint_backlogs.prefetch_related("historias", "historias_devolvidas").order_by("-data_inicio", "-pk"))
+    for sprint in sprints:
+        sprint.resumo = resumo_sprint(sprint)
+    return render(request, "core/sprint_lista.html", {"projeto": projeto, "sprints": sprints})
+
+
+def resumo_sprint(sprint):
+    # Números do Sprint para a lista e para o histórico. Num Sprint fechado, as histórias que
+    # ficaram nele são as concluídas e as outras estão em HistoriaDevolvida.
+    historias = list(sprint.historias.all())
+    devolvidas = list(sprint.historias_devolvidas.all())
+    concluidas = [h for h in historias if h.situacao == HistoriaUsuario.SITUACAO_CONCLUIDA]
+    pontos = lambda itens: sum(h.story_points or 0 for h in itens)
+    return {
+        "total": len(historias) + len(devolvidas),
+        "concluidas": len(concluidas),
+        "devolvidas": len(devolvidas),
+        "pontos_concluidos": pontos(concluidas),
+        "pontos_total": pontos(historias) + pontos(devolvidas),
+    }
 
 
 # HU09 - Criar Sprint Backlog com nome e período (nasce vazio)
@@ -614,6 +636,16 @@ def sprint_criar(request, pk):
 def sprint_detalhe(request, pk, sprint_id):
     projeto = projeto_acessivel(request.user, pk)
     sprint = obter_sprint(projeto, sprint_id)
+    if sprint.fechado:
+        # Concluído ou cancelado: a página vira histórico, só para consulta.
+        return render(request, "core/sprint_historico.html", {
+            "projeto": projeto, "sprint": sprint, "resumo": resumo_sprint(sprint),
+            "concluidas": sprint.historias.select_related("responsavel").order_by("titulo"),
+            "devolvidas": sprint.historias_devolvidas.select_related(
+                "historia__sprint_backlog", "historia__product_backlog"),
+            "antecipado": sprint.encerrado_em and sprint.encerrado_em < sprint.data_fim,
+            "dias_antes": (sprint.data_fim - sprint.encerrado_em).days if sprint.encerrado_em else 0,
+        })
     historias = list(sprint.historias.select_related("epico", "responsavel").order_by("titulo"))
     total_pontos = sum(h.story_points or 0 for h in historias)
     # Quadro Kanban: uma coluna por situação, com quantas histórias e pontos cada uma tem.
@@ -624,9 +656,79 @@ def sprint_detalhe(request, pk, sprint_id):
             "valor": valor, "nome": nome, "historias": da_coluna,
             "pontos": sum(h.story_points or 0 for h in da_coluna),
         })
+    hoje = timezone.localdate()
+    e_dono = projeto.dono_id == request.user.id
     return render(request, "core/sprint_detalhe.html", {
         "projeto": projeto, "sprint": sprint, "historias": historias, "total_pontos": total_pontos,
         "colunas": colunas,
+        "dias_restantes": (sprint.data_fim - hoje).days,
+        "dias_para_comecar": (sprint.data_inicio - hoje).days,
+        # Encerrar e cancelar: só o dono do projeto (no Scrum, o Product Owner).
+        "pode_encerrar": e_dono and sprint.status == SprintBacklog.STATUS_EM_ANDAMENTO,
+        "pode_cancelar": e_dono,
+    })
+
+
+def sprint_aberto_do_dono(request, pk, sprint_id):
+    # Encerrar e cancelar só valem para o dono do projeto e para Sprints ainda abertos.
+    projeto = projeto_acessivel(request.user, pk)
+    sprint = obter_sprint(projeto, sprint_id)
+    if projeto.dono_id != request.user.id:
+        messages.error(request, "Só o dono do projeto pode encerrar ou cancelar um Sprint.")
+        return projeto, sprint, redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
+    if sprint.fechado:
+        messages.error(request, "Este Sprint já foi encerrado ou cancelado.")
+        return projeto, sprint, redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
+    return projeto, sprint, None
+
+
+# Encerrar Sprint antes do previsto: as histórias não concluídas voltam ao Product Backlog.
+@login_required(login_url="login")
+def sprint_encerrar(request, pk, sprint_id):
+    projeto, sprint, recusa = sprint_aberto_do_dono(request, pk, sprint_id)
+    if recusa:
+        return recusa
+    if sprint.status != SprintBacklog.STATUS_EM_ANDAMENTO:
+        messages.error(request, "Só um Sprint em andamento pode ser encerrado. Um Sprint planejado pode ser cancelado ou excluído.")
+        return redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
+    erro = None
+    if request.method == "POST":
+        try:
+            devolvidas = fechar_sprint(sprint, usuario=request.user)
+        except SemProductBacklog as e:
+            erro = str(e)
+        else:
+            messages.success(request, f"{sprint.nome} encerrado. {len(devolvidas)} história(s) voltaram para o Product Backlog.")
+            return redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
+    return render(request, "core/sprint_fechar.html", {
+        "projeto": projeto, "sprint": sprint, "acao": "encerrar", "erro": erro,
+        "pendentes": historias_nao_concluidas(sprint),
+        "concluidas": sprint.historias.filter(situacao=HistoriaUsuario.SITUACAO_CONCLUIDA).count(),
+        "hoje": timezone.localdate(),
+    })
+
+
+# Cancelar Sprint: quando o trabalho deixou de fazer sentido. Motivo opcional.
+@login_required(login_url="login")
+def sprint_cancelar(request, pk, sprint_id):
+    projeto, sprint, recusa = sprint_aberto_do_dono(request, pk, sprint_id)
+    if recusa:
+        return recusa
+    form = CancelarSprintForm(request.POST or None)
+    erro = None
+    if request.method == "POST" and form.is_valid():
+        try:
+            devolvidas = fechar_sprint(sprint, usuario=request.user, cancelar=True, motivo=form.cleaned_data["motivo"])
+        except SemProductBacklog as e:
+            erro = str(e)
+        else:
+            messages.success(request, f"{sprint.nome} cancelado. {len(devolvidas)} história(s) voltaram para o Product Backlog.")
+            return redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
+    return render(request, "core/sprint_fechar.html", {
+        "projeto": projeto, "sprint": sprint, "acao": "cancelar", "erro": erro, "form": form,
+        "pendentes": historias_nao_concluidas(sprint),
+        "concluidas": sprint.historias.filter(situacao=HistoriaUsuario.SITUACAO_CONCLUIDA).count(),
+        "hoje": timezone.localdate(),
     })
 
 
@@ -635,6 +737,9 @@ def sprint_detalhe(request, pk, sprint_id):
 def sprint_editar(request, pk, sprint_id):
     projeto = projeto_acessivel(request.user, pk)
     sprint = obter_sprint(projeto, sprint_id)
+    if sprint.fechado:
+        messages.error(request, "Um Sprint encerrado ou cancelado faz parte do histórico e não pode ser editado.")
+        return redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
     form = SprintBacklogForm(request.POST or None, instance=sprint)
     if request.method == "POST" and form.is_valid():
         form.save()
@@ -703,7 +808,9 @@ def historia_situacao(request, pk, historia_id):
     if historia.sprint_backlog_id is None:
         messages.error(request, "A história precisa estar em um Sprint para mudar de situação.")
         return redirect("historia_detalhe", pk=projeto.pk, historia_id=historia.pk)
-    if nova not in validas:
+    if historia.sprint_backlog.fechado:
+        messages.error(request, "Este Sprint já foi encerrado ou cancelado; o quadro não muda mais.")
+    elif nova not in validas:
         messages.error(request, "Situação inválida.")
     elif nova != historia.situacao:
         historia.situacao = nova

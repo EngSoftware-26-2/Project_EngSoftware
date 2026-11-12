@@ -1,0 +1,35 @@
+{% extends "core/base.html" %}
+{% comment %} Confirmação de Encerrar Sprint e de Cancelar Sprint (só o dono do projeto).
+   Mostra antes quais histórias não concluídas voltarão para o Product Backlog. {% endcomment %}
+{% block titulo %}{% if acao == "cancelar" %}Cancelar{% else %}Encerrar{% endif %} {{ sprint.nome }} – {{ projeto.nome }}{% endblock %}
+{% block conteudo %}
+<div class="cartao cartao-medio">
+  <h2>{% if acao == "cancelar" %}Cancelar{% else %}Encerrar{% endif %} o {{ sprint.nome }}?</h2>
+  {% if acao == "cancelar" %}
+  <p class="sub">Use quando o trabalho do Sprint deixou de fazer sentido, por exemplo porque a prioridade mudou.</p>
+  {% else %}
+  <p class="sub">Previsto para terminar em {{ sprint.data_fim|date:"d/m/Y" }}. Será encerrado hoje, {{ hoje|date:"d/m/Y" }}.</p>
+  {% endif %}
+  {% if erro %}<div class="mensagem erro-msg" role="alert">{{ erro }}</div>{% endif %}
+
+  {% if pendentes %}
+  <div class="aviso">
+    <strong>{{ pendentes|length }} história{{ pendentes|length|pluralize }} não concluída{{ pendentes|length|pluralize }} voltar{{ pendentes|length|pluralize:"á,ão" }} para o Product Backlog</strong>, com os Story Points que têm hoje:
+    <ul class="lista">{% for h in pendentes %}<li>{{ h.titulo }} · {{ h.story_points_display }}</li>{% endfor %}</ul>
+  </div>
+  {% else %}
+  <div class="aviso">Todas as histórias deste Sprint estão concluídas.</div>
+  {% endif %}
+  {% if concluidas %}<p>As {{ concluidas }} história{{ concluidas|pluralize }} concluída{{ concluidas|pluralize }} fica{{ concluidas|pluralize:"m" }} registrada{{ concluidas|pluralize }} no {{ sprint.nome }}.</p>{% endif %}
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form %}{% for campo in form %}{% include "core/_campo.html" %}{% endfor %}{% endif %}
+    <div class="botoes">
+      {% if acao == "cancelar" %}<button type="submit" class="perigo">Cancelar Sprint</button>
+      {% else %}<button type="submit">Encerrar Sprint</button>{% endif %}
+      <a class="botao secundario" href="{% url 'sprint_detalhe' projeto.id sprint.id %}">Voltar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

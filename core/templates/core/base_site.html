@@ -120,6 +120,27 @@
     .situacao-em_desenvolvimento { background: #e3ecfb; color: #1d4ed8; }
     .situacao-concluida { background: #e6f4ea; color: #1e7a34; }
     @media (max-width: 760px) { .quadro { grid-template-columns: 1fr; } }
+    .status { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .75rem; font-weight: 600; vertical-align: middle; letter-spacing: 0; }
+    .status-planejado { background: #eceff3; color: #4b5563; }
+    .status-em_andamento { background: #e3ecfb; color: #1d4ed8; }
+    .status-concluido { background: #e6f4ea; color: #1e7a34; }
+    .status-cancelado { background: #fdecec; color: #b42318; }
+    .cartao-medio { max-width: 620px; margin: 24px auto; padding: 28px; }
+    .cartao-medio h2 { margin-top: 0; }
+    .cartao-medio input, .cartao-medio select, .cartao-medio textarea { max-width: none; }
+    .aviso { background: #fff8e1; border-left: 4px solid #e0a800; padding: 10px 14px; border-radius: 6px; margin: 14px 0; }
+    ul.lista { margin: 8px 0 0; padding-left: 20px; }
+    .botoes { display: flex; gap: 8px; margin-top: 18px; }
+    .linha-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .faixa { background: var(--vermelho-suave); border: 1px solid #f5c2c0; border-radius: var(--raio); padding: 12px 16px; margin: 0 0 16px; color: #8e1c1c; }
+    .resumo { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 4px 0 22px; }
+    .resumo div { background: #fff; border: 1px solid var(--borda); border-radius: var(--raio); padding: 14px 16px; box-shadow: var(--sombra); }
+    .resumo strong { display: block; font-size: 1.4rem; color: var(--azul); }
+    .resumo span { color: var(--cinza); font-size: .85em; }
+    .titulo-secao { display: flex; align-items: center; gap: 8px; margin: 22px 0 4px; font-size: 1rem; }
+    .ponto { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .ponto-verde { background: #22a447; } .ponto-cinza { background: #9ca3af; }
+    @media (max-width: 600px) { .linha-2, .resumo { grid-template-columns: 1fr; } }
     .helptext { display: block; color: var(--cinza); font-size: .85em; }
     fieldset { border: 1px solid var(--borda); border-radius: var(--raio); margin: 16px 0; padding: 8px 16px; background: #fff; }
     .vazio { color: var(--cinza); font-style: italic; }

@@ -6,12 +6,16 @@
 {% block conteudo %}
 <div class="linha-titulo">
   <div>
-    <h2>{{ sprint.nome }}</h2>
-    <p class="sub">{{ sprint.data_inicio|date:"d/m/Y" }} a {{ sprint.data_fim|date:"d/m/Y" }} · {{ historias|length }} história{{ historias|length|pluralize }} · {{ total_pontos }} Story Points</p>
+    <h2>{{ sprint.nome }} {% include "core/_status_sprint.html" with s=sprint %}</h2>
+    <p class="sub">{{ sprint.data_inicio|date:"d/m/Y" }} a {{ sprint.data_fim|date:"d/m/Y" }}
+      · {% if sprint.status == "planejado" %}começa em {{ dias_para_comecar }} dia{{ dias_para_comecar|pluralize }}{% elif dias_restantes == 0 %}último dia{% else %}{{ dias_restantes }} dia{{ dias_restantes|pluralize }} restante{{ dias_restantes|pluralize }}{% endif %}
+      · {{ historias|length }} história{{ historias|length|pluralize }} · {{ total_pontos }} Story Points</p>
   </div>
   <div class="acoes">
     <a class="botao secundario" href="{% url 'sprint_editar' projeto.id sprint.id %}">Editar</a>
-    <a class="botao perigo" href="{% url 'sprint_excluir' projeto.id sprint.id %}">Excluir</a>
+    {% if pode_encerrar %}<a class="botao" href="{% url 'sprint_encerrar' projeto.id sprint.id %}">Encerrar Sprint</a>{% endif %}
+    {% if pode_cancelar %}<a class="botao perigo" href="{% url 'sprint_cancelar' projeto.id sprint.id %}">Cancelar Sprint</a>{% endif %}
+    <a class="botao secundario" href="{% url 'sprint_excluir' projeto.id sprint.id %}">Excluir</a>
   </div>
 </div>
 

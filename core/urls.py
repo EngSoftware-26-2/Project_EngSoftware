@@ -37,6 +37,8 @@ urlpatterns = [
     path("projetos/<int:pk>/sprints/", views.sprint_lista, name="sprint_lista"),
     path("projetos/<int:pk>/sprints/novo/", views.sprint_criar, name="sprint_criar"),
     path("projetos/<int:pk>/sprints/<int:sprint_id>/", views.sprint_detalhe, name="sprint_detalhe"),
+    path("projetos/<int:pk>/sprints/<int:sprint_id>/encerrar/", views.sprint_encerrar, name="sprint_encerrar"),
+    path("projetos/<int:pk>/sprints/<int:sprint_id>/cancelar/", views.sprint_cancelar, name="sprint_cancelar"),
     path("projetos/<int:pk>/sprints/<int:sprint_id>/editar/", views.sprint_editar, name="sprint_editar"),
     path("projetos/<int:pk>/sprints/<int:sprint_id>/excluir/", views.sprint_excluir, name="sprint_excluir"),
     # Épicos (HU15, HU16) e histórias ligadas a cada um (HU17)
