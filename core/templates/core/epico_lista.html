@@ -1,8 +1,10 @@
 {% extends "core/base.html" %}
 {% block titulo %}Épicos – {{ projeto.nome }}{% endblock %}
 {% block conteudo %}
-<h2>Épicos</h2>
-<a class="botao" href="{% url 'epico_criar' projeto.id %}">Novo épico</a>
+<div class="linha-titulo">
+  <h2>Épicos</h2>
+  <a class="botao" href="{% url 'epico_criar' projeto.id %}">Novo épico</a>
+</div>
 {% if epicos %}
 <table>
   <tr><th>Nome</th><th>Descrição</th><th>Histórias</th></tr>
@@ -15,6 +17,10 @@
   {% endfor %}
 </table>
 {% else %}
-<p class="vazio">Ainda não há épicos neste projeto.</p>
+<div class="cartao estado-vazio">
+  <h2>Ainda não há épicos neste projeto.</h2>
+  <p>Um épico agrupa histórias relacionadas, por exemplo “Empréstimos” ou “Acervo”.</p>
+  <a class="botao" href="{% url 'epico_criar' projeto.id %}">Novo épico</a>
+</div>
 {% endif %}
 {% endblock %}

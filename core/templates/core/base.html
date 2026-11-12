@@ -1,16 +1,19 @@
 {% extends "core/base_site.html" %}
-{% comment %} Layout das telas de dentro de um projeto: nome do projeto e as abas de navegação {% endcomment %}
+{% comment %} Layout das telas de dentro de um projeto: nome do projeto e as abas de navegação.
+   A aba da área em que a pessoa está fica destacada. {% endcomment %}
 {% block cabecalho %}
+{% with n=request.resolver_match.url_name %}
 <div class="cabecalho">
   <h1>{{ projeto.nome }}</h1>
   <nav class="abas">
     <a href="{% url 'inicio' %}">Meus projetos</a>
-    <a href="{% url 'detalhe_projeto' projeto.id %}">Projeto</a>
-    {% if projeto.product_backlog %}<a href="{% url 'product_backlog' projeto.id %}">Product Backlog</a>{% endif %}
-    <a href="{% url 'sprint_lista' projeto.id %}">Sprints</a>
-    <a href="{% url 'historia_lista' projeto.id %}">Histórias</a>
-    <a href="{% url 'epico_lista' projeto.id %}">Épicos</a>
-    <a href="{% url 'membros_projeto' projeto.id %}">Membros</a>
+    <a href="{% url 'detalhe_projeto' projeto.id %}"{% if n == 'detalhe_projeto' or n == 'editar_projeto' or n == 'excluir_projeto' %} class="ativa"{% endif %}>Projeto</a>
+    {% if projeto.product_backlog %}<a href="{% url 'product_backlog' projeto.id %}"{% if 'product_backlog' in n %} class="ativa"{% endif %}>Product Backlog</a>{% endif %}
+    <a href="{% url 'sprint_lista' projeto.id %}"{% if n|slice:':7' == 'sprint_' %} class="ativa"{% endif %}>Sprints</a>
+    <a href="{% url 'historia_lista' projeto.id %}"{% if n|slice:':9' == 'historia_' or n|slice:':9' == 'criterio_' %} class="ativa"{% endif %}>Histórias</a>
+    <a href="{% url 'epico_lista' projeto.id %}"{% if n|slice:':6' == 'epico_' %} class="ativa"{% endif %}>Épicos</a>
+    <a href="{% url 'membros_projeto' projeto.id %}"{% if n == 'membros_projeto' %} class="ativa"{% endif %}>Membros</a>
   </nav>
 </div>
+{% endwith %}
 {% endblock %}

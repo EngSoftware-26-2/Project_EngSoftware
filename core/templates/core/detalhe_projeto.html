@@ -1,30 +1,69 @@
 {% extends "core/base.html" %}
+{% comment %} HU05 - Página do projeto: descrição, dono e um cartão para cada área, com um resumo
+   e o botão de sempre (Ver membros, Ver/Criar Product Backlog, Sprints, Histórias, Épicos). {% endcomment %}
 {% block titulo %}{{ projeto.nome }}{% endblock %}
 {% block conteudo %}
-<div class="cartao">
-  {% if projeto.descricao %}<p>{{ projeto.descricao|linebreaksbr }}</p>{% endif %}
-  <p>Dono: {{ projeto.dono.first_name }} ({{ projeto.dono.email }})</p>
+<div class="linha-titulo">
+  <div>
+    {% if projeto.descricao %}<p class="descricao-projeto">{{ projeto.descricao|linebreaksbr }}</p>{% endif %}
+    <p class="sub">Dono: {{ projeto.dono.first_name }} ({{ projeto.dono.email }}){% if projeto.dono_id == request.user.id %} · você{% endif %}</p>
+  </div>
+  <div class="acoes">
+    {% if projeto.dono_id == request.user.id %}
+    <a class="botao secundario" href="{% url 'editar_projeto' projeto.pk %}">Editar projeto</a>
+    <a class="botao secundario" href="{% url 'excluir_projeto' projeto.pk %}">Excluir projeto</a>
+    {% else %}
+    {% comment %} Pede confirmação antes de sair (HU24, critério 2: ao cancelar, continuo como membro) {% endcomment %}
+    <form method="post" action="{% url 'sair_projeto' projeto.pk %}" onsubmit="return confirm('Deseja sair deste projeto?')">{% csrf_token %}<button type="submit" class="perigo">Sair do projeto</button></form>
+    {% endif %}
+  </div>
 </div>
-<div class="acoes">
-  <a class="botao" href="{% url 'membros_projeto' projeto.pk %}">Ver membros</a>
-  {% if projeto.product_backlog %}
-  <a class="botao" href="{% url 'product_backlog' projeto.pk %}">Ver Product Backlog</a>
-  {% else %}
-  <a class="botao" href="{% url 'criar_product_backlog' projeto.pk %}">Criar Product Backlog</a>
-  {% endif %}
+
+<div class="grade-areas">
+  <div class="cartao area">
+    <h3>Product Backlog</h3>
+    {% if projeto.product_backlog %}
+    <p class="area-numero">{{ resumo.no_backlog }}</p>
+    <p class="sub">história{{ resumo.no_backlog|pluralize }} esperando um Sprint</p>
+    <a class="botao" href="{% url 'product_backlog' projeto.pk %}">Ver Product Backlog</a>
+    {% else %}
+    <p class="sub">O projeto ainda não tem Product Backlog. Crie para começar a escrever histórias.</p>
+    <a class="botao" href="{% url 'criar_product_backlog' projeto.pk %}">Criar Product Backlog</a>
+    {% endif %}
+  </div>
   {% comment %} Sprint Backlogs (HU09, HU10), histórias (HU12-HU14) e épicos (HU15-HU17) {% endcomment %}
-  <a class="botao" href="{% url 'sprint_lista' projeto.pk %}">Sprints</a>
-  <a class="botao" href="{% url 'historia_lista' projeto.pk %}">Histórias</a>
-  <a class="botao" href="{% url 'epico_lista' projeto.pk %}">Épicos</a>
+  <div class="cartao area">
+    <h3>Sprints</h3>
+    {% if resumo.sprint_atual %}
+    <p class="area-numero area-texto">{{ resumo.sprint_atual.nome }} {% include "core/_status_sprint.html" with s=resumo.sprint_atual %}</p>
+    <p class="sub">até {{ resumo.sprint_atual.data_fim|date:"d/m/Y" }}</p>
+    {% elif resumo.proximo_sprint %}
+    <p class="area-numero area-texto">{{ resumo.proximo_sprint.nome }} {% include "core/_status_sprint.html" with s=resumo.proximo_sprint %}</p>
+    <p class="sub">começa em {{ resumo.proximo_sprint.data_inicio|date:"d/m/Y" }}</p>
+    {% else %}
+    <p class="area-numero">{{ resumo.sprints }}</p>
+    <p class="sub">Sprint{{ resumo.sprints|pluralize }} no projeto, nenhum aberto</p>
+    {% endif %}
+    <a class="botao" href="{% url 'sprint_lista' projeto.pk %}">Sprints</a>
+  </div>
+  <div class="cartao area">
+    <h3>Histórias</h3>
+    <p class="area-numero">{{ resumo.historias }}</p>
+    <p class="sub">história{{ resumo.historias|pluralize }} de usuário no projeto</p>
+    <a class="botao" href="{% url 'historia_lista' projeto.pk %}">Histórias</a>
+  </div>
+  <div class="cartao area">
+    <h3>Épicos</h3>
+    <p class="area-numero">{{ resumo.epicos }}</p>
+    <p class="sub">épico{{ resumo.epicos|pluralize }} agrupando histórias</p>
+    <a class="botao" href="{% url 'epico_lista' projeto.pk %}">Épicos</a>
+  </div>
+  <div class="cartao area">
+    <h3>Membros</h3>
+    <p class="area-numero">{{ resumo.membros }}</p>
+    <p class="sub">pessoa{{ resumo.membros|pluralize }} no projeto, contando o dono</p>
+    <a class="botao" href="{% url 'membros_projeto' projeto.pk %}">Ver membros</a>
+  </div>
 </div>
-<div class="acoes">
-  {% if projeto.dono_id == request.user.id %}
-  <a class="botao secundario" href="{% url 'editar_projeto' projeto.pk %}">Editar projeto</a>
-  <a class="botao perigo" href="{% url 'excluir_projeto' projeto.pk %}">Excluir projeto</a>
-  {% else %}
-  {% comment %} Pede confirmação antes de sair (HU24, critério 2: ao cancelar, continuo como membro) {% endcomment %}
-  <form method="post" action="{% url 'sair_projeto' projeto.pk %}" onsubmit="return confirm('Deseja sair deste projeto?')">{% csrf_token %}<button type="submit" class="perigo">Sair do projeto</button></form>
-  {% endif %}
-  <a class="botao secundario" href="{% url 'inicio' %}">Voltar aos projetos</a>
-</div>
+<p><a href="{% url 'inicio' %}">← Voltar aos projetos</a></p>
 {% endblock %}

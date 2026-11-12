@@ -1,16 +1,23 @@
 {% extends "core/base.html" %}
-{% comment %} Formulário de criar/editar Sprint Backlog (HU09, HU10) {% endcomment %}
+{% comment %} Formulário de criar/editar Sprint Backlog (HU09, HU10), com as regras de datas:
+   início a partir de hoje (até 1 ano), no máximo 30 dias e um Sprint por vez. {% endcomment %}
 {% block titulo %}{{ acao }} – {{ projeto.nome }}{% endblock %}
 {% block conteudo %}
-<h2>{{ acao }}</h2>
-<form method="post" novalidate>
-  {% csrf_token %}
-  {% if form.non_field_errors %}<div class="erro">{{ form.non_field_errors }}</div>{% endif %}
-  <p>{{ form.nome.label_tag }}{{ form.nome }}{{ form.nome.errors }}</p>
-  <p>{{ form.data_inicio.label_tag }}{{ form.data_inicio }}{{ form.data_inicio.errors }}</p>
-  <p>{{ form.data_fim.label_tag }}{{ form.data_fim }}{{ form.data_fim.errors }}</p>
-  <button class="botao" type="submit">Salvar</button>
-  {% if sprint %}<a class="botao secundario" href="{% url 'sprint_detalhe' projeto.id sprint.id %}">Cancelar</a>
-  {% else %}<a class="botao secundario" href="{% url 'sprint_lista' projeto.id %}">Cancelar</a>{% endif %}
-</form>
+<div class="cartao cartao-medio">
+  <h2>{{ acao }}</h2>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% include "core/_campo.html" with campo=form.nome %}
+    <div class="linha-2">
+      {% include "core/_campo.html" with campo=form.data_inicio %}
+      {% include "core/_campo.html" with campo=form.data_fim %}
+    </div>
+    {% for erro in form.non_field_errors %}<div class="faixa" role="alert">{{ erro }}</div>{% endfor %}
+    <div class="botoes">
+      <button type="submit">Salvar</button>
+      {% if sprint %}<a class="botao secundario" href="{% url 'sprint_detalhe' projeto.id sprint.id %}">Voltar</a>
+      {% else %}<a class="botao secundario" href="{% url 'sprint_lista' projeto.id %}">Voltar</a>{% endif %}
+    </div>
+  </form>
+</div>
 {% endblock %}

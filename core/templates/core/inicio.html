@@ -1,32 +1,46 @@
 {% extends "core/base_site.html" %}
 {% block titulo %}Meus Projetos{% endblock %}
-{% block cabecalho %}<div class="cabecalho"><h1>Meus Projetos</h1></div>{% endblock %}
 {% block conteudo %}
-<p>Bem-vindo, {{ request.user.first_name }}!</p>
-<div class="acoes"><a class="botao" href="{% url 'criar_projeto' %}">Criar Novo Projeto</a></div>
+<div class="inicio">
+  <div class="inicio-topo">
+    <div>
+      <h1>Meus Projetos</h1>
+      <p class="subtitulo">Bem-vindo, {{ request.user.first_name }}!</p>
+    </div>
+    <a class="botao" href="{% url 'criar_projeto' %}">Criar Novo Projeto</a>
+  </div>
 
-{% for projeto in projetos %}
-<div class="cartao">
-  <h3><a href="{% url 'detalhe_projeto' projeto.id %}">{{ projeto.nome }}</a></h3>
-  {% if projeto.descricao %}<p>{{ projeto.descricao }}</p>{% endif %}
-  {% if projeto.dono_id == request.user.id %}
-  <p><span class="etiqueta">Participação: Dono</span></p>
-  <div class="acoes">
-    <a class="botao secundario" href="{% url 'editar_projeto' projeto.id %}">Editar Projeto</a>
-    <a class="botao secundario" href="{% url 'membros_projeto' projeto.id %}">Gerenciar Membros</a>
-    <a class="botao perigo" href="{% url 'excluir_projeto' projeto.id %}">Excluir Projeto</a>
+  {% if projetos %}
+  <div class="grade-projetos">
+    {% for projeto in projetos %}
+    <div class="cartao cartao-projeto">
+      <div class="cartao-projeto-topo">
+        <h3><a href="{% url 'detalhe_projeto' projeto.id %}">{{ projeto.nome }}</a></h3>
+        <span class="etiqueta">Participação: {% if projeto.dono_id == request.user.id %}Dono{% else %}Membro{% endif %}</span>
+      </div>
+      {% if projeto.descricao %}<p class="descricao">{{ projeto.descricao }}</p>{% endif %}
+      <div class="acoes">
+        {% if projeto.dono_id == request.user.id %}
+        <a class="botao secundario" href="{% url 'editar_projeto' projeto.id %}">Editar Projeto</a>
+        <a class="botao secundario" href="{% url 'membros_projeto' projeto.id %}">Gerenciar Membros</a>
+        <a class="botao perigo" href="{% url 'excluir_projeto' projeto.id %}">Excluir Projeto</a>
+        {% else %}
+        <form method="post" action="{% url 'sair_projeto' projeto.id %}" onsubmit="return confirm('Deseja sair deste projeto?')">
+          {% csrf_token %}
+          <button type="submit" class="perigo">Sair do Projeto</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
   </div>
   {% else %}
-  <p><span class="etiqueta">Participação: Membro</span></p>
-  <div class="acoes">
-    <form method="post" action="{% url 'sair_projeto' projeto.id %}" onsubmit="return confirm('Deseja sair deste projeto?')">
-      {% csrf_token %}
-      <button type="submit" class="perigo">Sair do Projeto</button>
-    </form>
+  <div class="cartao estado-vazio">
+    <div class="estado-vazio-icone" aria-hidden="true">📁</div>
+    <h2>Você ainda não possui projetos.</h2>
+    <p>Crie um projeto para começar a montar o Product Backlog, as histórias de usuário e os Sprints.</p>
+    <a class="botao" href="{% url 'criar_projeto' %}">Criar Novo Projeto</a>
   </div>
   {% endif %}
 </div>
-{% empty %}
-<p class="vazio">Você ainda não possui projetos.</p>
-{% endfor %}
 {% endblock %}

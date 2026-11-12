@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.db.models.deletion import ProtectedError
 
 from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAceitacao, SprintBacklog
@@ -17,8 +17,10 @@ from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAce
 from .forms import (
     CadastroForm, LoginForm, ProjetoForm, AdicionarMembroForm, ProductBacklogForm,
     EpicoForm, HistoriaUsuarioForm, CriterioAceitacaoForm, SprintBacklogForm,
-    MoverHistoriaForm,
+    MoverHistoriaForm, CancelarSprintForm,
 )
+from django.utils import timezone
+from .sprints import SemProductBacklog, encerrar_sprints_vencidos, fechar_sprint, historias_nao_concluidas
 
 # HU01 - Cadastro
 def cadastro(request):
@@ -250,10 +252,14 @@ def sair_projeto(request, pk):
 # Projeto que o usuário pode acessar (dono ou membro). Para os outros usuários, o projeto
 # "não existe" (404), assim ninguém descobre projetos alheios pelo endereço (HU05).
 def projeto_acessivel(usuario, pk):
-    return get_object_or_404(
+    projeto = get_object_or_404(
         Projeto.objects.filter(Q(dono=usuario) | Q(membros=usuario)).distinct(),
         pk=pk,
     )
+    # Sprints cuja data de fim já passou são encerrados aqui, na primeira vez que alguém
+    # abre o projeto depois do prazo (as histórias não concluídas voltam ao Product Backlog).
+    encerrar_sprints_vencidos(projeto)
+    return projeto
 
 
 # HU05 - Detalhe do projeto (quem não participa volta para a lista de projetos)
@@ -263,7 +269,23 @@ def detalhe_projeto(request, pk):
         projeto = projeto_acessivel(request.user, pk)
     except Http404:
         return redirect("inicio")
-    return render(request, "core/detalhe_projeto.html", {"projeto": projeto})
+    # Resumo de cada área do projeto para os cartões da página (os botões continuam os mesmos).
+    backlog = ProductBacklog.objects.filter(projeto=projeto).first()
+    sprints = list(projeto.sprint_backlogs.order_by("data_inicio", "pk"))
+    sprint_atual = next((s for s in sprints if s.status == SprintBacklog.STATUS_EM_ANDAMENTO), None)
+    proximo = next((s for s in sprints if s.status == SprintBacklog.STATUS_PLANEJADO), None)
+    return render(request, "core/detalhe_projeto.html", {
+        "projeto": projeto,
+        "resumo": {
+            "no_backlog": backlog.historias.filter(sprint_backlog__isnull=True).count() if backlog else 0,
+            "sprints": len(sprints),
+            "sprint_atual": sprint_atual,
+            "proximo_sprint": proximo,
+            "historias": historias_visiveis(projeto).count(),
+            "epicos": projeto.epicos.count(),
+            "membros": projeto.membros.count() + 1,
+        },
+    })
 
 
 # HU06 - Editar projeto: só o dono (o filtro dono=request.user dá 404 para membros)
@@ -304,11 +326,33 @@ def excluir_projeto(request, pk):
 def product_backlog(request, pk):
     projeto = projeto_acessivel(request.user, pk)
     backlog = get_object_or_404(ProductBacklog, projeto=projeto)
+    historias = list(backlog.historias.select_related("epico", "responsavel").filter(
+        sprint_backlog__isnull=True,
+    ).filter(Q(epico__isnull=True) | Q(epico__projeto=projeto)).annotate(num_criterios=Count("criterios_aceitacao")))
+    # Ordem de prioridade: primeiro o MoSCoW (Must, Should, Could, Won't, sem etiqueta) e,
+    # dentro de cada etiqueta, o maior score RICE primeiro. RICE incompleto ou não calculável
+    # fica depois dos calculados. Empate: ordem alfabética.
+    ordem_moscow = {"M": 0, "S": 1, "C": 2, "W": 3, "": 4}
+    historias.sort(key=lambda h: (
+        ordem_moscow.get(h.moscow, 4),
+        h.rice_score is None,
+        -(h.rice_score or 0),
+        h.titulo.lower(),
+    ))
+    # Sprints que ainda recebem histórias (planejados ou em andamento), para o "Mover para".
+    sprints_abertos = [s for s in projeto.sprint_backlogs.order_by("data_inicio", "pk") if not s.fechado]
+    por_moscow = {codigo: 0 for codigo in ordem_moscow}
+    for h in historias:
+        por_moscow[h.moscow] = por_moscow.get(h.moscow, 0) + 1
     return render(request, "core/product_backlog.html", {
-        "projeto": projeto, "backlog": backlog,
-        "historias": backlog.historias.select_related("epico").filter(
-            sprint_backlog__isnull=True,
-        ).filter(Q(epico__isnull=True) | Q(epico__projeto=projeto)).order_by("pk"),
+        "projeto": projeto, "backlog": backlog, "historias": historias,
+        "sprints_abertos": sprints_abertos,
+        "total_pontos": sum(h.story_points or 0 for h in historias),
+        "sem_estimativa": sum(1 for h in historias if h.story_points is None),
+        "contagem_moscow": [
+            ("M", "Must", por_moscow["M"]), ("S", "Should", por_moscow["S"]),
+            ("C", "Could", por_moscow["C"]), ("W", "Won't", por_moscow["W"]),
+        ],
     })
 
 
@@ -387,13 +431,23 @@ def obter_historia(projeto, historia_id):
     return get_object_or_404(historias_visiveis(projeto), pk=historia_id)
 
 
+def avisar_historia(request, historia):
+    # Avisos de boas práticas depois de salvar; a história é salva do mesmo jeito.
+    if historia.grande_demais:
+        messages.warning(request, f"Com {historia.story_points} pontos, a história pode ser grande demais "
+                                  "para um Sprint. Considere dividi-la em histórias menores.")
+    if historia.sem_criterios:
+        messages.warning(request, "A história ainda não tem critério de aceitação. Adicione pelo menos um "
+                                  "para o time saber quando ela está pronta.")
+
+
 # HU12 a HU14 - Lista de todas as histórias do projeto (em qualquer backlog)
 @login_required(login_url="login")
 def historia_lista(request, pk):
     projeto = projeto_acessivel(request.user, pk)
     return render(request, "core/historia_lista.html", {
         "projeto": projeto,
-        "historias": historias_visiveis(projeto).order_by("titulo"),
+        "historias": historias_visiveis(projeto).annotate(num_criterios=Count("criterios_aceitacao")).order_by("titulo"),
     })
 
 
@@ -408,10 +462,17 @@ def historia_criar(request, pk):
         messages.error(request, "Crie o Product Backlog do projeto antes de criar histórias.")
         return redirect("criar_product_backlog", pk=projeto.pk)
     historia = HistoriaUsuario(product_backlog=backlog)
-    form = HistoriaUsuarioForm(request.POST or None, instance=historia, projeto=projeto)
+    # "Nova história neste épico": a página do épico manda ?epico=<id> e o campo já vem
+    # escolhido (só vale para épicos do próprio projeto).
+    inicial = {}
+    epico_id = request.GET.get("epico")
+    if epico_id and epico_id.isdigit() and Epico.objects.filter(pk=epico_id, projeto=projeto).exists():
+        inicial["epico"] = int(epico_id)
+    form = HistoriaUsuarioForm(request.POST or None, instance=historia, projeto=projeto, initial=inicial)
     if request.method == "POST" and form.is_valid():
-        form.save()
+        nova = form.save()
         messages.success(request, "História criada no Product Backlog.")
+        avisar_historia(request, nova)
         return redirect("historia_lista", pk=projeto.pk)
     return render(request, "core/historia_form.html", {"projeto": projeto, "form": form, "acao": "Nova história"})
 
@@ -440,6 +501,7 @@ def historia_editar(request, pk, historia_id):
         # calculada a partir dos campos salvos.
         form.save()
         messages.success(request, "História atualizada.")
+        # Na edição os avisos não viram mensagem: a página da história já os mostra.
         return redirect("historia_detalhe", pk=projeto.pk, historia_id=historia.pk)
     return render(request, "core/historia_form.html", {"projeto": projeto, "form": form, "acao": "Editar história", "historia": historia})
 
@@ -486,9 +548,59 @@ def epico_criar(request, pk):
 def epico_detalhe(request, pk, epico_id):
     projeto = projeto_acessivel(request.user, pk)
     epico = get_object_or_404(Epico, pk=epico_id, projeto=projeto)
+    historias = list(epico.historias.select_related("sprint_backlog", "responsavel")
+                     .annotate(num_criterios=Count("criterios_aceitacao")).order_by("titulo"))
     return render(request, "core/epico_detalhe.html", {
-        "projeto": projeto, "epico": epico, "historias": epico.historias.order_by("titulo"),
+        "projeto": projeto, "epico": epico, "historias": historias,
+        "total_pontos": sum(h.story_points or 0 for h in historias),
     })
+
+
+# Atalho do épico (ponto 7): escolher várias histórias do projeto de uma vez e ligar ao
+# épico. Aparecem as sem épico e as que estão em outro épico; marcar uma destas move a
+# história de épico.
+@login_required(login_url="login")
+def epico_adicionar_historias(request, pk, epico_id):
+    projeto = projeto_acessivel(request.user, pk)
+    epico = get_object_or_404(Epico, pk=epico_id, projeto=projeto)
+    candidatas = historias_visiveis(projeto).exclude(epico=epico).select_related("epico").order_by("titulo")
+    if request.method == "POST":
+        escolhidas = candidatas.filter(pk__in=request.POST.getlist("historias"))
+        if not escolhidas:
+            messages.error(request, "Marque pelo menos uma história.")
+        else:
+            de_outro_epico = 0
+            for historia in escolhidas:
+                if historia.epico_id:
+                    de_outro_epico += 1
+                historia.epico = epico
+                historia.save(update_fields=["epico"])
+            total = len(escolhidas)
+            texto = "1 história ligada ao épico." if total == 1 else f"{total} histórias ligadas ao épico."
+            if de_outro_epico == 1:
+                texto += " Uma delas saiu de outro épico." if total > 1 else " Ela saiu de outro épico."
+            elif de_outro_epico > 1:
+                texto += f" {de_outro_epico} delas saíram de outro épico."
+            messages.success(request, texto)
+            return redirect("epico_detalhe", pk=projeto.pk, epico_id=epico.pk)
+    return render(request, "core/epico_adicionar_historias.html", {
+        "projeto": projeto, "epico": epico,
+        "sem_epico": [h for h in candidatas if h.epico_id is None],
+        "outro_epico": [h for h in candidatas if h.epico_id is not None],
+    })
+
+
+# Tira a história do épico: ela fica "sem épico" e não é apagada (como na HU16).
+@login_required(login_url="login")
+@require_POST
+def epico_remover_historia(request, pk, epico_id, historia_id):
+    projeto = projeto_acessivel(request.user, pk)
+    epico = get_object_or_404(Epico, pk=epico_id, projeto=projeto)
+    historia = get_object_or_404(historias_visiveis(projeto), pk=historia_id, epico=epico)
+    historia.epico = None
+    historia.save(update_fields=["epico"])
+    messages.success(request, f"“{historia.titulo}” saiu do épico e ficou sem épico.")
+    return redirect("epico_detalhe", pk=projeto.pk, epico_id=epico.pk)
 
 
 # HU16 - Editar épico (o nome novo aparece em todas as histórias ligadas)
@@ -551,10 +663,15 @@ def criterio_editar(request, pk, historia_id, criterio_id):
     projeto = projeto_acessivel(request.user, pk)
     historia = obter_historia(projeto, historia_id)
     criterio = obter_criterio(historia, criterio_id)
-    form = CriterioAceitacaoForm(request.POST or None, instance=criterio)
+    # Na edição, o critério pode mudar de história (útil ao dividir uma história grande).
+    form = CriterioAceitacaoForm(request.POST or None, instance=criterio,
+                                 historias=historias_visiveis(projeto).order_by("titulo"))
     if request.method == "POST" and form.is_valid():
-        form.save()
-        messages.success(request, "Critério de aceitação atualizado.")
+        salvo = form.save()
+        if salvo.historia_usuario_id != historia.pk:
+            messages.success(request, f"Critério movido para “{salvo.historia_usuario.titulo}”.")
+        else:
+            messages.success(request, "Critério de aceitação atualizado.")
         return redirect("historia_detalhe", pk=projeto.pk, historia_id=historia.pk)
     return render(request, "core/criterio_form.html", {
         "projeto": projeto, "historia": historia, "form": form, "acao": "Editar critério de aceitação",
@@ -591,10 +708,26 @@ def obter_sprint(projeto, sprint_id):
 @login_required(login_url="login")
 def sprint_lista(request, pk):
     projeto = projeto_acessivel(request.user, pk)
-    return render(request, "core/sprint_lista.html", {
-        "projeto": projeto,
-        "sprints": projeto.sprint_backlogs.prefetch_related("historias").order_by("data_inicio", "pk"),
-    })
+    sprints = list(projeto.sprint_backlogs.prefetch_related("historias", "historias_devolvidas").order_by("-data_inicio", "-pk"))
+    for sprint in sprints:
+        sprint.resumo = resumo_sprint(sprint)
+    return render(request, "core/sprint_lista.html", {"projeto": projeto, "sprints": sprints})
+
+
+def resumo_sprint(sprint):
+    # Números do Sprint para a lista e para o histórico. Num Sprint fechado, as histórias que
+    # ficaram nele são as concluídas e as outras estão em HistoriaDevolvida.
+    historias = list(sprint.historias.all())
+    devolvidas = list(sprint.historias_devolvidas.all())
+    concluidas = [h for h in historias if h.situacao == HistoriaUsuario.SITUACAO_CONCLUIDA]
+    pontos = lambda itens: sum(h.story_points or 0 for h in itens)
+    return {
+        "total": len(historias) + len(devolvidas),
+        "concluidas": len(concluidas),
+        "devolvidas": len(devolvidas),
+        "pontos_concluidos": pontos(concluidas),
+        "pontos_total": pontos(historias) + pontos(devolvidas),
+    }
 
 
 # HU09 - Criar Sprint Backlog com nome e período (nasce vazio)
@@ -614,10 +747,100 @@ def sprint_criar(request, pk):
 def sprint_detalhe(request, pk, sprint_id):
     projeto = projeto_acessivel(request.user, pk)
     sprint = obter_sprint(projeto, sprint_id)
-    historias = sprint.historias.select_related("epico").order_by("titulo")
+    if sprint.fechado:
+        # Concluído ou cancelado: a página vira histórico, só para consulta.
+        return render(request, "core/sprint_historico.html", {
+            "projeto": projeto, "sprint": sprint, "resumo": resumo_sprint(sprint),
+            "concluidas": sprint.historias.select_related("responsavel").order_by("titulo"),
+            "devolvidas": sprint.historias_devolvidas.select_related(
+                "historia__sprint_backlog", "historia__product_backlog"),
+            "antecipado": sprint.encerrado_em and sprint.encerrado_em < sprint.data_fim,
+            "dias_antes": (sprint.data_fim - sprint.encerrado_em).days if sprint.encerrado_em else 0,
+        })
+    historias = list(sprint.historias.select_related("epico", "responsavel")
+                     .annotate(num_criterios=Count("criterios_aceitacao")).order_by("titulo"))
     total_pontos = sum(h.story_points or 0 for h in historias)
+    # Quadro Kanban: uma coluna por situação, com quantas histórias e pontos cada uma tem.
+    colunas = []
+    for valor, nome in HistoriaUsuario.SITUACAO_CHOICES:
+        da_coluna = [h for h in historias if h.situacao == valor]
+        colunas.append({
+            "valor": valor, "nome": nome, "historias": da_coluna,
+            "pontos": sum(h.story_points or 0 for h in da_coluna),
+        })
+    hoje = timezone.localdate()
+    e_dono = projeto.dono_id == request.user.id
     return render(request, "core/sprint_detalhe.html", {
         "projeto": projeto, "sprint": sprint, "historias": historias, "total_pontos": total_pontos,
+        "colunas": colunas,
+        "dias_restantes": (sprint.data_fim - hoje).days,
+        "dias_para_comecar": (sprint.data_inicio - hoje).days,
+        # Encerrar e cancelar: só o dono do projeto (no Scrum, o Product Owner).
+        "pode_encerrar": e_dono and sprint.status == SprintBacklog.STATUS_EM_ANDAMENTO,
+        "pode_cancelar": e_dono,
+    })
+
+
+def sprint_aberto_do_dono(request, pk, sprint_id):
+    # Encerrar e cancelar só valem para o dono do projeto e para Sprints ainda abertos.
+    projeto = projeto_acessivel(request.user, pk)
+    sprint = obter_sprint(projeto, sprint_id)
+    if projeto.dono_id != request.user.id:
+        messages.error(request, "Só o dono do projeto pode encerrar ou cancelar um Sprint.")
+        return projeto, sprint, redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
+    if sprint.fechado:
+        messages.error(request, "Este Sprint já foi encerrado ou cancelado.")
+        return projeto, sprint, redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
+    return projeto, sprint, None
+
+
+# Encerrar Sprint antes do previsto: as histórias não concluídas voltam ao Product Backlog.
+@login_required(login_url="login")
+def sprint_encerrar(request, pk, sprint_id):
+    projeto, sprint, recusa = sprint_aberto_do_dono(request, pk, sprint_id)
+    if recusa:
+        return recusa
+    if sprint.status != SprintBacklog.STATUS_EM_ANDAMENTO:
+        messages.error(request, "Só um Sprint em andamento pode ser encerrado. Um Sprint planejado pode ser cancelado ou excluído.")
+        return redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
+    erro = None
+    if request.method == "POST":
+        try:
+            devolvidas = fechar_sprint(sprint, usuario=request.user)
+        except SemProductBacklog as e:
+            erro = str(e)
+        else:
+            messages.success(request, f"{sprint.nome} encerrado. {len(devolvidas)} história(s) voltaram para o Product Backlog.")
+            return redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
+    return render(request, "core/sprint_fechar.html", {
+        "projeto": projeto, "sprint": sprint, "acao": "encerrar", "erro": erro,
+        "pendentes": historias_nao_concluidas(sprint),
+        "concluidas": sprint.historias.filter(situacao=HistoriaUsuario.SITUACAO_CONCLUIDA).count(),
+        "hoje": timezone.localdate(),
+    })
+
+
+# Cancelar Sprint: quando o trabalho deixou de fazer sentido. Motivo opcional.
+@login_required(login_url="login")
+def sprint_cancelar(request, pk, sprint_id):
+    projeto, sprint, recusa = sprint_aberto_do_dono(request, pk, sprint_id)
+    if recusa:
+        return recusa
+    form = CancelarSprintForm(request.POST or None)
+    erro = None
+    if request.method == "POST" and form.is_valid():
+        try:
+            devolvidas = fechar_sprint(sprint, usuario=request.user, cancelar=True, motivo=form.cleaned_data["motivo"])
+        except SemProductBacklog as e:
+            erro = str(e)
+        else:
+            messages.success(request, f"{sprint.nome} cancelado. {len(devolvidas)} história(s) voltaram para o Product Backlog.")
+            return redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
+    return render(request, "core/sprint_fechar.html", {
+        "projeto": projeto, "sprint": sprint, "acao": "cancelar", "erro": erro, "form": form,
+        "pendentes": historias_nao_concluidas(sprint),
+        "concluidas": sprint.historias.filter(situacao=HistoriaUsuario.SITUACAO_CONCLUIDA).count(),
+        "hoje": timezone.localdate(),
     })
 
 
@@ -626,6 +849,9 @@ def sprint_detalhe(request, pk, sprint_id):
 def sprint_editar(request, pk, sprint_id):
     projeto = projeto_acessivel(request.user, pk)
     sprint = obter_sprint(projeto, sprint_id)
+    if sprint.fechado:
+        messages.error(request, "Um Sprint encerrado ou cancelado faz parte do histórico e não pode ser editado.")
+        return redirect("sprint_detalhe", pk=projeto.pk, sprint_id=sprint.pk)
     form = SprintBacklogForm(request.POST or None, instance=sprint)
     if request.method == "POST" and form.is_valid():
         form.save()
@@ -678,4 +904,31 @@ def historia_mover(request, pk, historia_id):
     else:
         for erro in form.errors.get("destino", []):
             messages.error(request, erro)
+    # O "Mover para Sprint" da lista do Product Backlog volta para a própria lista.
+    if request.POST.get("voltar") == "product_backlog":
+        return redirect("product_backlog", pk=projeto.pk)
     return redirect("historia_detalhe", pk=projeto.pk, historia_id=historia.pk)
+
+
+# Quadro Kanban do Sprint: muda a situação de uma história (A fazer, Em desenvolvimento ou
+# Concluída) pelos botões do cartão. Dono e membros podem mover os cartões. Só vale para
+# histórias que estão em um Sprint; no Product Backlog a situação não se aplica.
+@login_required(login_url="login")
+@require_POST
+def historia_situacao(request, pk, historia_id):
+    projeto = projeto_acessivel(request.user, pk)
+    historia = obter_historia(projeto, historia_id)
+    nova = request.POST.get("situacao")
+    validas = dict(HistoriaUsuario.SITUACAO_CHOICES)
+    if historia.sprint_backlog_id is None:
+        messages.error(request, "A história precisa estar em um Sprint para mudar de situação.")
+        return redirect("historia_detalhe", pk=projeto.pk, historia_id=historia.pk)
+    if historia.sprint_backlog.fechado:
+        messages.error(request, "Este Sprint já foi encerrado ou cancelado; o quadro não muda mais.")
+    elif nova not in validas:
+        messages.error(request, "Situação inválida.")
+    elif nova != historia.situacao:
+        historia.situacao = nova
+        historia.save(update_fields=["situacao"])
+        messages.success(request, f"“{historia.titulo}” foi para {validas[nova]}.")
+    return redirect("sprint_detalhe", pk=projeto.pk, sprint_id=historia.sprint_backlog_id)

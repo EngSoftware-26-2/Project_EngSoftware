@@ -4,14 +4,22 @@ from django.db import IntegrityError, connection, transaction
 from django.db.models.deletion import ProtectedError
 from django.test import Client, TestCase, TransactionTestCase
 from django.urls import reverse
-from datetime import date
+from datetime import date, timedelta
 
 from .models import Projeto, ProductBacklog, HistoriaUsuario, Epico, SprintBacklog, CriterioAceitacao
 
 
+def dia(n):
+    """Data de hoje + n dias, no formato do formulário (AAAA-MM-DD)."""
+    return (date.today() + timedelta(days=n)).isoformat()
+
+
+# Período de Sprint em andamento, relativo a hoje. Com datas fixas, o Sprint dos testes
+# passaria a ser encerrado sozinho quando a data de fim ficasse no passado.
+_HOJE = date.today()
 SPRINT_PERIODO = {
-    "data_inicio": date(2026, 11, 1),
-    "data_fim": date(2026, 11, 7),
+    "data_inicio": _HOJE - timedelta(days=2),
+    "data_fim": _HOJE + timedelta(days=7),
 }
 
 
@@ -69,6 +77,110 @@ class AutenticacaoTests(TestCase):
         self.assertEqual(self.client.get(reverse("logout")).status_code, 405)
         self.assertRedirects(self.client.post(reverse("logout")), reverse("login"))
         self.assertNotIn("_auth_user_id", self.client.session)
+
+
+# HU01 - Regras dos campos do cadastro (nome, e-mail e senha), dicas e erros embaixo do campo
+class CadastroRegrasTests(TestCase):
+    SENHA = "SenhaForte!482"
+
+    def cadastrar(self, **dados):
+        base = {"nome": "Ana Souza", "email": "ana@example.com",
+                "senha": self.SENHA, "confirmar_senha": self.SENHA}
+        base.update(dados)
+        if "senha" in dados and "confirmar_senha" not in dados:
+            base["confirmar_senha"] = dados["senha"]
+        return self.client.post(reverse("cadastro"), base)
+
+    def erros(self, response, campo):
+        return response.context["form"].errors.get(campo, [])
+
+    def test_nome_limites_de_tamanho(self):
+        for nome, aceito in [("Al", False), ("Ana", True), ("A" + "a" * 49, True), ("A" + "a" * 50, False)]:
+            with self.subTest(tamanho=len(nome)):
+                User.objects.all().delete()
+                response = self.cadastrar(nome=nome)
+                if aceito:
+                    self.assertRedirects(response, reverse("inicio"))
+                    self.client.logout()
+                else:
+                    self.assertTrue(self.erros(response, "nome"))
+                    self.assertFalse(User.objects.exists())
+
+    def test_nome_recusa_numero_minuscula_simbolo_e_espaco_duplo(self):
+        casos = {
+            "Ana 2": "O nome não pode conter números.",
+            "ana Souza": "O nome deve começar com letra maiúscula.",
+            "Ana@Souza": "O nome só pode ter letras, espaços, hífen (-) e apóstrofo (').",
+            "Ana  Souza": "O nome não pode ter espaços duplos.",
+        }
+        for nome, mensagem in casos.items():
+            with self.subTest(nome=nome):
+                response = self.cadastrar(nome=nome)
+                self.assertIn(mensagem, self.erros(response, "nome"))
+                self.assertFalse(User.objects.exists())
+
+    def test_nome_aceita_acento_hifen_e_apostrofo(self):
+        response = self.cadastrar(nome="João D'Ávila-Conceição")
+        self.assertRedirects(response, reverse("inicio"))
+        self.assertEqual(User.objects.get().first_name, "João D'Ávila-Conceição")
+
+    def test_senha_recusa_cada_regra_faltando(self):
+        casos = {
+            "Sen!a12": "A senha deve ter entre 8 e 64 caracteres.",
+            "senhaforte!482": "A senha precisa de pelo menos uma letra maiúscula.",
+            "SENHAFORTE!482": "A senha precisa de pelo menos uma letra minúscula.",
+            "SenhaForte!abc": "A senha precisa de pelo menos um número.",
+            "SenhaForte482": "A senha precisa de pelo menos um símbolo (ex.: ! @ # $).",
+            "Aa1!" + "x" * 61: "A senha deve ter entre 8 e 64 caracteres.",
+        }
+        for senha, mensagem in casos.items():
+            with self.subTest(senha=senha):
+                response = self.cadastrar(senha=senha)
+                self.assertIn(mensagem, self.erros(response, "senha"))
+                self.assertFalse(User.objects.exists())
+
+    def test_senha_nos_limites_de_8_e_64_e_aceita(self):
+        for senha in ["Sen!a123", "Aa1!" + "x" * 60]:
+            with self.subTest(tamanho=len(senha)):
+                User.objects.all().delete()
+                self.assertRedirects(self.cadastrar(senha=senha), reverse("inicio"))
+                self.client.logout()
+
+    def test_senha_parecida_com_o_email_e_recusada(self):
+        response = self.cadastrar(email="robertacarvalho@example.com", senha="Robertacarvalho!1")
+        self.assertTrue(self.erros(response, "senha"))
+        self.assertFalse(User.objects.exists())
+
+    def test_email_invalido_e_longo_demais(self):
+        for email in ["ana.example.com", "a" * 90 + "@example.com"]:
+            with self.subTest(email=email):
+                response = self.cadastrar(email=email)
+                self.assertTrue(self.erros(response, "email"))
+                self.assertFalse(User.objects.exists())
+
+    def test_tela_mostra_dicas_e_erro_embaixo_do_campo(self):
+        response = self.client.get(reverse("cadastro"))
+        self.assertContains(response, "3 a 50 letras, iniciar com maiúscula")
+        self.assertContains(response, "com maiúscula, minúscula, número e símbolo")
+        self.assertContains(response, "novalidate")
+
+        html = self.cadastrar(nome="Ana 2").content.decode()
+        campo_nome = html.index('id="id_nome"')
+        erro = html.index("O nome não pode conter números.")
+        campo_email = html.index('id="id_email"')
+        self.assertLess(campo_nome, erro)
+        self.assertLess(erro, campo_email)
+        self.assertIn("campo-com-erro", html)
+
+    def test_login_mostra_erro_geral_e_dica(self):
+        response = self.client.post(reverse("login"), {"email": "ninguem@example.com", "senha": "x"})
+        self.assertContains(response, "E-mail ou senha inválidos.")
+        self.assertContains(response, "O e-mail usado no cadastro.")
+
+    def test_conta_antiga_fora_das_regras_continua_entrando(self):
+        User.objects.create_user("velho", email="velho@example.com", password="senhaantiga", first_name="x")
+        response = self.client.post(reverse("login"), {"email": "velho@example.com", "senha": "senhaantiga"})
+        self.assertRedirects(response, reverse("inicio"))
 
 
 # HU04-HU08 e HU22-HU24: projetos, Product Backlog, dono e membros, além das regras de
@@ -499,10 +611,10 @@ class AjustesMembrosTests(TestCase):
 # tratados sem perder registros
 class MigracaoIntegridadeTests(TransactionTestCase):
     antiga = ("core", "0003_alter_projeto_dono")
-    # De 0005 para 0007. Os testes usam o model atual (que tem Effort,
-    # critérios de aceitação e período de Sprint)
-    # depois de migrar, então o banco precisa chegar na última migration.
-    atual = ("core", "0007_criterioaceitacao_periodo_sprint")
+    # Os testes usam o model atual (que tem Effort, critérios de aceitação, período de
+    # Sprint, situação, responsável e encerramento do Sprint) depois de migrar, então o banco precisa chegar na
+    # última migration.
+    atual = ("core", "0009_sprint_encerramento")
 
     def setUp(self):
         from django.db.migrations.executor import MigrationExecutor
@@ -830,7 +942,8 @@ class SprintBacklogViewsTests(TestCase):
         return reverse(nome, args=[self.projeto.pk, *args])
 
     def dados(self, **extra):
-        d = {"nome": "Sprint 1", "data_inicio": "2026-11-09", "data_fim": "2026-11-20"}
+        # Datas relativas a hoje: a data de início não pode ser no passado.
+        d = {"nome": "Sprint 1", "data_inicio": dia(0), "data_fim": dia(11)}
         d.update(extra)
         return d
 
@@ -843,7 +956,7 @@ class SprintBacklogViewsTests(TestCase):
         self.assertContains(self.client.get(self.url("sprint_lista")), "Sprint 1")
 
     def test_hu09_data_fim_antes_do_inicio(self):
-        resp = self.client.post(self.url("sprint_criar"), self.dados(data_fim="2026-11-01"))
+        resp = self.client.post(self.url("sprint_criar"), self.dados(data_fim=dia(-1)))
         self.assertContains(resp, "A data de fim não pode ser anterior à data de início.")
         self.assertFalse(SprintBacklog.objects.exists())
 
@@ -855,15 +968,17 @@ class SprintBacklogViewsTests(TestCase):
 
     def test_hu09_varios_sprints_no_mesmo_projeto(self):
         self.client.post(self.url("sprint_criar"), self.dados())
-        self.client.post(self.url("sprint_criar"), self.dados(nome="Sprint 2", data_inicio="2026-11-23", data_fim="2026-12-04"))
+        self.client.post(self.url("sprint_criar"), self.dados(nome="Sprint 2", data_inicio=dia(14), data_fim=dia(25)))
         self.assertEqual(self.projeto.sprint_backlogs.count(), 2)
 
     def test_hu10_editar_sprint(self):
         sprint = SprintBacklog.objects.create(projeto=self.projeto, **SPRINT_PERIODO, nome="Sprint 1")
-        self.client.post(self.url("sprint_editar", sprint.pk), self.dados(nome="Sprint Um", data_fim="2026-11-27"))
+        # Sprint em andamento: a data de início antiga (no passado) continua valendo.
+        inicio = SPRINT_PERIODO["data_inicio"].isoformat()
+        self.client.post(self.url("sprint_editar", sprint.pk), self.dados(nome="Sprint Um", data_inicio=inicio, data_fim=dia(15)))
         sprint.refresh_from_db()
         self.assertEqual(sprint.nome, "Sprint Um")
-        self.assertEqual(str(sprint.data_fim), "2026-11-27")
+        self.assertEqual(sprint.data_fim.isoformat(), dia(15))
 
     def test_hu10_excluir_sprint_devolve_historias_ao_product_backlog(self):
         sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1", **SPRINT_PERIODO)
@@ -956,3 +1071,639 @@ class MoverHistoriaTests(TestCase):
         self.assertEqual(self.mover(f"sprint-{self.sprint1.pk}").status_code, 404)
         self.historia.refresh_from_db()
         self.assertEqual(self.historia.product_backlog, self.backlog)
+
+
+# Situação da história no Sprint (quadro Kanban) e responsável
+class SituacaoResponsavelTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("lia", email="lia@exemplo.com", first_name="Lia Melo")
+        self.membro = User.objects.create_user("rui", email="rui@exemplo.com", first_name="Rui Dias")
+        self.estranho = User.objects.create_user("eva", email="eva@exemplo.com", first_name="Eva Luz")
+        self.projeto = Projeto.objects.create(nome="Projeto K", dono=self.dono)
+        self.projeto.membros.add(self.membro)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1", **SPRINT_PERIODO)
+        self.historia = HistoriaUsuario.objects.create(
+            titulo="Renovar empréstimo", sprint_backlog=self.sprint, papel="a", acao="b", beneficio="c")
+        self.client.force_login(self.membro)
+
+    def mudar(self, situacao, historia=None):
+        h = historia or self.historia
+        return self.client.post(reverse("historia_situacao", args=[self.projeto.pk, h.pk]), {"situacao": situacao})
+
+    def dados_form(self, **extra):
+        dados = {"titulo": "Renovar empréstimo", "papel": "a", "acao": "b", "beneficio": "c"}
+        dados.update(extra)
+        return dados
+
+    def test_historia_nova_comeca_a_fazer_e_sem_responsavel(self):
+        self.assertEqual(self.historia.situacao, HistoriaUsuario.SITUACAO_A_FAZER)
+        self.assertIsNone(self.historia.responsavel)
+
+    def test_botoes_movem_o_cartao_entre_as_colunas(self):
+        for situacao in ["em_desenvolvimento", "concluida", "em_desenvolvimento", "a_fazer"]:
+            with self.subTest(situacao=situacao):
+                response = self.mudar(situacao)
+                self.assertRedirects(response, reverse("sprint_detalhe", args=[self.projeto.pk, self.sprint.pk]))
+                self.historia.refresh_from_db()
+                self.assertEqual(self.historia.situacao, situacao)
+
+    def test_situacao_invalida_e_recusada(self):
+        self.mudar("pronta")
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.situacao, "a_fazer")
+
+    def test_banco_recusa_situacao_fora_da_lista(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            HistoriaUsuario.objects.filter(pk=self.historia.pk).update(situacao="pronta")
+
+    def test_historia_no_product_backlog_nao_muda_de_situacao(self):
+        historia = HistoriaUsuario.objects.create(
+            titulo="No PB", product_backlog=self.backlog, papel="a", acao="b", beneficio="c")
+        self.mudar("concluida", historia)
+        historia.refresh_from_db()
+        self.assertEqual(historia.situacao, "a_fazer")
+
+    def test_quem_nao_participa_nao_move_o_cartao(self):
+        self.client.force_login(self.estranho)
+        self.assertEqual(self.mudar("concluida").status_code, 404)
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.situacao, "a_fazer")
+
+    def test_voltar_para_o_product_backlog_reinicia_a_situacao(self):
+        self.mudar("concluida")
+        self.client.post(reverse("historia_mover", args=[self.projeto.pk, self.historia.pk]), {"destino": "product-backlog"})
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.product_backlog, self.backlog)
+        self.assertEqual(self.historia.situacao, "a_fazer")
+
+    def test_excluir_sprint_reinicia_a_situacao(self):
+        self.mudar("em_desenvolvimento")
+        self.sprint.delete()
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.product_backlog, self.backlog)
+        self.assertEqual(self.historia.situacao, "a_fazer")
+
+    def test_quadro_mostra_cada_historia_na_coluna_certa(self):
+        outra = HistoriaUsuario.objects.create(
+            titulo="Buscar livro", sprint_backlog=self.sprint, papel="a", acao="b", beneficio="c",
+            story_points=5, responsavel=self.dono)
+        self.mudar("concluida", outra)
+        response = self.client.get(reverse("sprint_detalhe", args=[self.projeto.pk, self.sprint.pk]))
+        colunas = {c["valor"]: [h.titulo for h in c["historias"]] for c in response.context["colunas"]}
+        self.assertEqual(colunas["a_fazer"], ["Renovar empréstimo"])
+        self.assertEqual(colunas["em_desenvolvimento"], [])
+        self.assertEqual(colunas["concluida"], ["Buscar livro"])
+        self.assertContains(response, "Lia Melo")
+        self.assertContains(response, "Sem responsável")
+        self.assertContains(response, "Iniciar →")
+        self.assertContains(response, "← Reabrir")
+
+    def test_responsavel_so_pode_ser_dono_ou_membro(self):
+        url = reverse("historia_editar", args=[self.projeto.pk, self.historia.pk])
+        response = self.client.post(url, self.dados_form(responsavel=self.estranho.pk, situacao="a_fazer"))
+        self.assertTrue(response.context["form"].errors.get("responsavel"))
+        self.client.post(url, self.dados_form(responsavel=self.dono.pk, situacao="em_desenvolvimento"))
+        self.historia.refresh_from_db()
+        self.assertEqual(self.historia.responsavel, self.dono)
+        self.assertEqual(self.historia.situacao, "em_desenvolvimento")
+
+    def test_model_recusa_responsavel_de_fora_do_projeto(self):
+        self.historia.responsavel = self.estranho
+        with self.assertRaises(ValidationError):
+            self.historia.save()
+
+    def test_situacao_so_aparece_no_formulario_com_a_historia_em_sprint(self):
+        no_sprint = self.client.get(reverse("historia_editar", args=[self.projeto.pk, self.historia.pk]))
+        self.assertIn("situacao", no_sprint.context["form"].fields)
+        historia_pb = HistoriaUsuario.objects.create(
+            titulo="No PB", product_backlog=self.backlog, papel="a", acao="b", beneficio="c")
+        no_pb = self.client.get(reverse("historia_editar", args=[self.projeto.pk, historia_pb.pk]))
+        self.assertNotIn("situacao", no_pb.context["form"].fields)
+        self.assertIn("responsavel", no_pb.context["form"].fields)
+
+    def test_membro_removido_ou_que_sai_deixa_historias_sem_responsavel(self):
+        self.historia.responsavel = self.membro
+        self.historia.save()
+        self.client.post(reverse("sair_projeto", args=[self.projeto.pk]))
+        self.historia.refresh_from_db()
+        self.assertIsNone(self.historia.responsavel)
+
+        self.projeto.membros.add(self.membro)
+        self.historia.responsavel = self.membro
+        self.historia.save()
+        self.client.force_login(self.dono)
+        self.client.post(reverse("remover_membro", args=[self.projeto.pk, self.membro.pk]))
+        self.historia.refresh_from_db()
+        self.assertIsNone(self.historia.responsavel)
+
+
+# Regras de datas do Sprint, status, encerrar, cancelar e histórico
+class SprintRegrasTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.membro = User.objects.create_user("rui", email="rui@exemplo.com", first_name="Rui Dias")
+        self.projeto = Projeto.objects.create(nome="Projeto R", dono=self.dono)
+        self.projeto.membros.add(self.membro)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def criar(self, inicio, fim, nome="Sprint X"):
+        return self.client.post(self.url("sprint_criar"), {"nome": nome, "data_inicio": inicio, "data_fim": fim})
+
+    def sprint(self, ini, fim, nome="Sprint 1", **extra):
+        hoje = date.today()
+        return SprintBacklog.objects.create(projeto=self.projeto, nome=nome,
+                                            data_inicio=hoje + timedelta(days=ini),
+                                            data_fim=hoje + timedelta(days=fim), **extra)
+
+    def historia(self, sprint, titulo, situacao="a_fazer", pontos=3):
+        return HistoriaUsuario.objects.create(titulo=titulo, sprint_backlog=sprint, papel="a", acao="b",
+                                              beneficio="c", story_points=pontos, situacao=situacao)
+
+    def erros(self, response, campo):
+        return response.context["form"].errors.get(campo, [])
+
+    # --- datas ---
+    def test_duracao_maxima_de_30_dias(self):
+        self.assertEqual(self.criar(dia(0), dia(29)).status_code, 302)  # 30 dias
+        SprintBacklog.objects.all().delete()
+        response = self.criar(dia(0), dia(30))  # 31 dias
+        self.assertIn("O Sprint pode durar no máximo 30 dias.", self.erros(response, "data_fim"))
+        self.assertFalse(SprintBacklog.objects.exists())
+
+    def test_sprint_de_um_dia_e_aceito(self):
+        self.assertEqual(self.criar(dia(0), dia(0)).status_code, 302)
+
+    def test_inicio_a_partir_de_hoje(self):
+        response = self.criar(dia(-1), dia(5))
+        self.assertTrue(any("não pode ser antes de hoje" in e for e in self.erros(response, "data_inicio")))
+        self.assertFalse(SprintBacklog.objects.exists())
+        self.assertEqual(self.criar(dia(0), dia(5)).status_code, 302)
+
+    def test_inicio_no_maximo_um_ano_a_frente(self):
+        response = self.criar(dia(366), dia(370))
+        self.assertTrue(any("no máximo 1 ano à frente" in e for e in self.erros(response, "data_inicio")))
+        self.assertEqual(self.criar(dia(365), dia(370)).status_code, 302)
+
+    def test_um_sprint_por_vez(self):
+        self.criar(dia(0), dia(11), "Sprint 1")
+        response = self.criar(dia(11), dia(20), "Sprint 2")  # coincide no último dia
+        self.assertTrue(any("Já existe um Sprint nesse período: Sprint 1" in e for e in response.context["form"].non_field_errors()))
+        self.assertEqual(self.criar(dia(12), dia(20), "Sprint 2").status_code, 302)  # começa no dia seguinte
+        self.assertEqual(self.projeto.sprint_backlogs.count(), 2)
+
+    def test_sprint_cancelado_ou_encerrado_antes_libera_as_datas(self):
+        cancelado = self.sprint(0, 10, cancelado=True, encerrado_em=date.today())
+        self.assertEqual(self.criar(dia(0), dia(10), "Sprint novo").status_code, 302)
+        SprintBacklog.objects.exclude(pk=cancelado.pk).delete()
+        self.sprint(-5, 10, nome="Encerrado", encerrado_em=date.today() + timedelta(days=0))
+        self.assertEqual(self.criar(dia(1), dia(5), "Seguinte").status_code, 302)
+
+    # --- status ---
+    def test_status_calculado_pelas_datas(self):
+        hoje = date.today()
+        s = SprintBacklog(projeto=self.projeto, nome="S", data_inicio=hoje, data_fim=hoje + timedelta(days=5))
+        self.assertEqual(s.status_em(hoje - timedelta(days=1)), "planejado")
+        self.assertEqual(s.status_em(hoje), "em_andamento")
+        self.assertEqual(s.status_em(hoje + timedelta(days=5)), "em_andamento")
+        self.assertEqual(s.status_em(hoje + timedelta(days=6)), "concluido")
+        s.cancelado = True
+        self.assertEqual(s.status_em(hoje), "cancelado")
+
+    def test_lista_mostra_a_situacao_de_cada_sprint(self):
+        self.sprint(-20, -15, nome="Antigo")
+        self.sprint(-2, 5, nome="Atual")
+        response = self.client.get(self.url("sprint_lista"))
+        self.assertContains(response, "Em andamento")
+        self.assertContains(response, "Concluído")
+
+    # --- encerrar ---
+    def test_dono_encerra_e_nao_concluidas_voltam_ao_product_backlog(self):
+        sprint = self.sprint(-3, 7)
+        feita = self.historia(sprint, "Feita", "concluida", 5)
+        andando = self.historia(sprint, "Andando", "em_desenvolvimento", 3)
+        parada = self.historia(sprint, "Parada", "a_fazer", 2)
+        confirmacao = self.client.get(self.url("sprint_encerrar", sprint.pk))
+        self.assertContains(confirmacao, "2 histórias não concluídas voltarão para o Product Backlog")
+        sprint.refresh_from_db()
+        self.assertIsNone(sprint.encerrado_em)  # a tela de confirmação não encerra
+
+        self.client.post(self.url("sprint_encerrar", sprint.pk))
+        sprint.refresh_from_db()
+        self.assertEqual(sprint.encerrado_em, date.today())
+        self.assertEqual(sprint.encerrado_por, self.dono)
+        self.assertEqual(sprint.status, "concluido")
+        for h in (feita, andando, parada):
+            h.refresh_from_db()
+        self.assertEqual(feita.sprint_backlog, sprint)
+        self.assertEqual(andando.product_backlog, self.backlog)
+        self.assertEqual(andando.situacao, "a_fazer")
+        registros = {d.titulo: d for d in sprint.historias_devolvidas.all()}
+        self.assertEqual(set(registros), {"Andando", "Parada"})
+        self.assertEqual(registros["Andando"].situacao, "em_desenvolvimento")
+        self.assertEqual(registros["Andando"].story_points, 3)
+
+        historico = self.client.get(self.url("sprint_detalhe", sprint.pk))
+        self.assertTemplateUsed(historico, "core/sprint_historico.html")
+        self.assertContains(historico, "5 pts")
+        self.assertContains(historico, "Voltaram para o Product Backlog")
+        self.assertContains(historico, "antes do previsto")
+
+    def test_membro_nao_encerra_nem_cancela(self):
+        sprint = self.sprint(-3, 7)
+        self.client.force_login(self.membro)
+        self.assertNotContains(self.client.get(self.url("sprint_detalhe", sprint.pk)), "Encerrar Sprint")
+        self.client.post(self.url("sprint_encerrar", sprint.pk))
+        self.client.post(self.url("sprint_cancelar", sprint.pk), {"motivo": "x"})
+        sprint.refresh_from_db()
+        self.assertIsNone(sprint.encerrado_em)
+        self.assertFalse(sprint.cancelado)
+
+    def test_sprint_planejado_nao_e_encerrado_mas_pode_ser_cancelado(self):
+        sprint = self.sprint(3, 10)
+        self.client.post(self.url("sprint_encerrar", sprint.pk))
+        sprint.refresh_from_db()
+        self.assertIsNone(sprint.encerrado_em)
+        self.client.post(self.url("sprint_cancelar", sprint.pk), {"motivo": ""})
+        sprint.refresh_from_db()
+        self.assertTrue(sprint.cancelado)
+
+    # --- cancelar ---
+    def test_cancelar_com_motivo_fica_registrado(self):
+        sprint = self.sprint(-3, 7)
+        self.historia(sprint, "Relatórios", "em_desenvolvimento")
+        self.client.post(self.url("sprint_cancelar", sprint.pk), {"motivo": "O cliente suspendeu o módulo."})
+        sprint.refresh_from_db()
+        self.assertTrue(sprint.cancelado)
+        self.assertEqual(sprint.status, "cancelado")
+        self.assertEqual(sprint.motivo_cancelamento, "O cliente suspendeu o módulo.")
+        self.assertEqual(HistoriaUsuario.objects.get(titulo="Relatórios").product_backlog, self.backlog)
+        pagina = self.client.get(self.url("sprint_detalhe", sprint.pk))
+        self.assertContains(pagina, "Sprint cancelado em")
+        self.assertContains(pagina, "Motivo: O cliente suspendeu o módulo.")
+
+    # --- encerramento automático ---
+    def test_sprint_vencido_e_encerrado_sozinho(self):
+        sprint = self.sprint(-10, -1)
+        pendente = self.historia(sprint, "Pendente", "em_desenvolvimento")
+        self.client.get(self.url("sprint_lista"))
+        sprint.refresh_from_db()
+        pendente.refresh_from_db()
+        self.assertEqual(sprint.encerrado_em, sprint.data_fim)
+        self.assertIsNone(sprint.encerrado_por)
+        self.assertEqual(pendente.product_backlog, self.backlog)
+        self.assertContains(self.client.get(self.url("sprint_detalhe", sprint.pk)), "encerrado automaticamente")
+
+    # --- Sprint fechado não muda ---
+    def test_sprint_fechado_nao_muda_mais(self):
+        fechado = self.sprint(-10, -1, nome="Fechado")
+        feita = self.historia(fechado, "Feita", "concluida")
+        aberto = self.sprint(0, 5, nome="Aberto")
+        no_pb = HistoriaUsuario.objects.create(titulo="No PB", product_backlog=self.backlog, papel="a", acao="b", beneficio="c")
+        self.client.get(self.url("sprint_lista"))  # encerra o vencido
+
+        self.client.post(self.url("historia_situacao", feita.pk), {"situacao": "a_fazer"})
+        feita.refresh_from_db()
+        self.assertEqual(feita.situacao, "concluida")
+
+        detalhe = self.client.get(self.url("historia_detalhe", no_pb.pk))
+        destinos = [v for v, _ in detalhe.context["form_mover"].fields["destino"].choices]
+        self.assertIn(f"sprint-{aberto.pk}", destinos)
+        self.assertNotIn(f"sprint-{fechado.pk}", destinos)
+        self.assertEqual(self.client.get(self.url("historia_detalhe", feita.pk)).context["form_mover"].fields["destino"].choices, [])
+
+        self.assertRedirects(self.client.get(self.url("sprint_editar", fechado.pk)), self.url("sprint_detalhe", fechado.pk))
+
+
+# Product Backlog em ordem de prioridade, com totais e "Mover para Sprint" na lista
+class ProductBacklogPrioridadeTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.projeto = Projeto.objects.create(nome="Projeto P", dono=self.dono)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.client.force_login(self.dono)
+
+    def h(self, titulo, moscow="", rice=None, pontos=None):
+        # rice=(reach, impact, confidence, effort)
+        campos = dict(zip(["reach", "impact", "confidence", "effort"], rice)) if rice else {}
+        return HistoriaUsuario.objects.create(titulo=titulo, product_backlog=self.backlog, papel="a", acao="b",
+                                              beneficio="c", moscow=moscow, story_points=pontos, **campos)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def titulos(self):
+        return [h.titulo for h in self.client.get(self.url("product_backlog")).context["historias"]]
+
+    def test_ordem_moscow_e_depois_rice(self):
+        self.h("Sem etiqueta", "", (100, 1, 100, 1))
+        self.h("Won't", "W", (100, 1, 100, 1))
+        self.h("Could", "C")
+        self.h("Must RICE baixo", "M", (10, 1, 50, 5))       # 100
+        self.h("Must RICE alto", "M", (500, 2, 80, 5))       # 16000
+        self.h("Must incompleto", "M")
+        self.h("Should", "S", (1, 1, 50, 1))
+        self.assertEqual(self.titulos(), [
+            "Must RICE alto", "Must RICE baixo", "Must incompleto", "Should", "Could", "Won't", "Sem etiqueta",
+        ])
+
+    def test_rice_nao_calculavel_fica_depois_dos_calculados(self):
+        self.h("Effort zero", "M", (100, 1, 100, 0))
+        self.h("Calculado", "M", (1, 0.25, 50, 55))
+        self.assertEqual(self.titulos(), ["Calculado", "Effort zero"])
+
+    def test_totais_e_contagem_por_moscow(self):
+        self.h("A", "M", pontos=5)
+        self.h("B", "M", pontos=3)
+        self.h("C", "S")
+        response = self.client.get(self.url("product_backlog"))
+        self.assertEqual(response.context["total_pontos"], 8)
+        self.assertEqual(response.context["sem_estimativa"], 1)
+        self.assertIn(("M", "Must", 2), response.context["contagem_moscow"])
+        self.assertContains(response, "1 sem estimativa")
+
+    def test_mover_para_sprint_pela_lista_volta_para_a_lista(self):
+        historia = self.h("Mover daqui", "M")
+        aberto = SprintBacklog.objects.create(projeto=self.projeto, nome="Aberto", **SPRINT_PERIODO)
+        response = self.client.post(self.url("historia_mover", historia.pk),
+                                    {"destino": f"sprint-{aberto.pk}", "voltar": "product_backlog"})
+        self.assertRedirects(response, self.url("product_backlog"))
+        historia.refresh_from_db()
+        self.assertEqual(historia.sprint_backlog, aberto)
+        self.assertNotIn("Mover daqui", self.titulos())
+
+    def test_so_sprints_abertos_aparecem_para_mover(self):
+        self.h("Qualquer", "M")
+        hoje = date.today()
+        aberto = SprintBacklog.objects.create(projeto=self.projeto, nome="Aberto", **SPRINT_PERIODO)
+        cancelado = SprintBacklog.objects.create(projeto=self.projeto, nome="Cancelado", data_inicio=hoje,
+                                                 data_fim=hoje, cancelado=True, encerrado_em=hoje)
+        response = self.client.get(self.url("product_backlog"))
+        self.assertEqual(response.context["sprints_abertos"], [aberto])
+        self.assertNotContains(response, f'value="sprint-{cancelado.pk}"')
+
+    def test_sem_sprint_aberto_mostra_aviso(self):
+        self.h("Qualquer", "M")
+        self.assertContains(self.client.get(self.url("product_backlog")), "Nenhum Sprint aberto")
+
+
+# Organização das telas da história: blocos do formulário, dicas, erros embaixo do campo
+# e etiquetas no topo do detalhe
+class HistoriaTelasTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.projeto = Projeto.objects.create(nome="Projeto H", dono=self.dono)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.epico = Epico.objects.create(projeto=self.projeto, titulo="Empréstimos")
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def test_formulario_em_blocos_na_ordem_com_dicas(self):
+        html = self.client.get(self.url("historia_criar")).content.decode()
+        posicoes = [html.index(t) for t in ("<h3>História</h3>", "Primeiro critério de aceitação",
+                                            "<h3>Classificação</h3>", "Priorização RICE")]
+        self.assertEqual(posicoes, sorted(posicoes))
+        self.assertIn("Quem vai usar. Ex.: leitor", html)
+        self.assertIn("Massivo 3 · Alto 2", html)
+        self.assertIn("novalidate", html)
+
+    def test_epico_story_points_e_moscow_ficam_no_mesmo_bloco(self):
+        html = self.client.get(self.url("historia_criar")).content.decode()
+        inicio = html.index("<h3>Classificação</h3>")
+        fim = html.index("Priorização RICE")
+        for campo in ('id="id_epico"', 'id="id_story_points"', 'id="id_moscow"', 'id="id_responsavel"'):
+            self.assertTrue(inicio < html.index(campo) < fim, campo)
+
+    def test_erro_aparece_embaixo_do_proprio_campo(self):
+        html = self.client.post(self.url("historia_criar"), {"titulo": "", "papel": "leitor", "acao": "x", "beneficio": "y"}).content.decode()
+        self.assertTrue(html.index('id="id_titulo"') < html.index("O título é obrigatório.") < html.index('id="id_papel"'))
+
+    def test_detalhe_mostra_etiquetas_no_topo(self):
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint 1", **SPRINT_PERIODO)
+        h = HistoriaUsuario.objects.create(titulo="Renovar", sprint_backlog=sprint, papel="leitor", acao="renovar",
+                                           beneficio="não ir à biblioteca", story_points=5, moscow="M",
+                                           epico=self.epico, responsavel=self.dono, situacao="em_desenvolvimento")
+        html = self.client.get(self.url("historia_detalhe", h.pk)).content.decode()
+        topo = html[html.index('<div class="etiquetas-historia">'):html.index('<div class="cartao frase-historia">')]
+        for texto in ("5 pts", "Must Have", "Épico: Empréstimos", "Em desenvolvimento", "Ana Souza"):
+            self.assertIn(texto, topo)
+        self.assertIn("<strong>Como um</strong> leitor", html)
+
+
+# Avisos de boas práticas (INVEST): história grande (13 pontos ou mais) e sem critério de
+# aceitação. São só avisos: a história é salva e movida normalmente.
+class AvisosHistoriaTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.projeto = Projeto.objects.create(nome="Projeto A", dono=self.dono)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def historia(self, pontos=None, **extra):
+        return HistoriaUsuario.objects.create(titulo="H", product_backlog=self.backlog, papel="a", acao="b",
+                                              beneficio="c", story_points=pontos, **extra)
+
+    def test_limite_de_13_pontos(self):
+        self.assertFalse(self.historia(8).grande_demais)
+        self.assertTrue(self.historia(13).grande_demais)
+        self.assertFalse(self.historia(None).grande_demais)
+
+    def test_sem_criterios(self):
+        h = self.historia(3)
+        self.assertTrue(h.sem_criterios)
+        CriterioAceitacao.objects.create(historia_usuario=h, dado="d", quando="q", entao="e")
+        self.assertFalse(h.sem_criterios)
+
+    def test_salva_mesmo_com_aviso_e_mostra_a_mensagem(self):
+        response = self.client.post(self.url("historia_criar"), {
+            "titulo": "Grande", "papel": "a", "acao": "b", "beneficio": "c", "story_points": "21"}, follow=True)
+        self.assertTrue(HistoriaUsuario.objects.filter(titulo="Grande").exists())
+        self.assertContains(response, "pode ser grande demais")
+        self.assertContains(response, "ainda não tem critério de aceitação")
+
+    def test_sem_aviso_quando_esta_tudo_certo(self):
+        response = self.client.post(self.url("historia_criar"), {
+            "titulo": "Pequena", "papel": "a", "acao": "b", "beneficio": "c", "story_points": "5",
+            "criterio_dado": "d", "criterio_quando": "q", "criterio_entao": "e"}, follow=True)
+        self.assertNotContains(response, "grande demais")
+        self.assertNotContains(response, "ainda não tem critério")
+
+    def test_etiquetas_aparecem_nas_listas_e_no_quadro(self):
+        grande = self.historia(34)
+        self.assertContains(self.client.get(self.url("product_backlog")), "Grande: dividir?")
+        self.assertContains(self.client.get(self.url("historia_lista")), "Sem critérios")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="S", **SPRINT_PERIODO)
+        self.client.post(self.url("historia_mover", grande.pk), {"destino": f"sprint-{sprint.pk}"})
+        grande.refresh_from_db()
+        self.assertEqual(grande.sprint_backlog, sprint)  # o aviso não impede mover
+        quadro = self.client.get(self.url("sprint_detalhe", sprint.pk))
+        self.assertContains(quadro, "Grande: dividir?")
+        self.assertContains(quadro, "Sem critérios")
+        self.assertContains(self.client.get(self.url("historia_detalhe", grande.pk)), "História grande:")
+
+
+# Atalhos do épico (adicionar várias histórias, inclusive de outro épico; tirar do épico;
+# nova história já no épico) e mover critério de aceitação para outra história
+class EpicoAtalhosTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.estranho = User.objects.create_user("eva", email="eva@exemplo.com")
+        self.projeto = Projeto.objects.create(nome="Projeto E", dono=self.dono)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.emprestimos = Epico.objects.create(projeto=self.projeto, titulo="Empréstimos")
+        self.acervo = Epico.objects.create(projeto=self.projeto, titulo="Acervo")
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def h(self, titulo, epico=None):
+        return HistoriaUsuario.objects.create(titulo=titulo, product_backlog=self.backlog, papel="a",
+                                              acao="b", beneficio="c", epico=epico)
+
+    def test_lista_mostra_sem_epico_e_de_outro_epico(self):
+        self.h("Livre")
+        self.h("Do acervo", self.acervo)
+        self.h("Já aqui", self.emprestimos)
+        response = self.client.get(self.url("epico_adicionar_historias", self.emprestimos.pk))
+        self.assertEqual([h.titulo for h in response.context["sem_epico"]], ["Livre"])
+        self.assertEqual([h.titulo for h in response.context["outro_epico"]], ["Do acervo"])
+
+    def test_adiciona_varias_e_move_de_outro_epico(self):
+        livre, do_acervo = self.h("Livre"), self.h("Do acervo", self.acervo)
+        response = self.client.post(self.url("epico_adicionar_historias", self.emprestimos.pk),
+                                    {"historias": [livre.pk, do_acervo.pk]}, follow=True)
+        livre.refresh_from_db()
+        do_acervo.refresh_from_db()
+        self.assertEqual(livre.epico, self.emprestimos)
+        self.assertEqual(do_acervo.epico, self.emprestimos)
+        self.assertContains(response, "2 histórias ligadas ao épico. Uma delas saiu de outro épico.")
+
+    def test_nada_marcado_avisa(self):
+        self.h("Livre")
+        response = self.client.post(self.url("epico_adicionar_historias", self.emprestimos.pk), {})
+        self.assertContains(response, "Marque pelo menos uma história.")
+
+    def test_nao_liga_historia_de_outro_projeto(self):
+        outro = Projeto.objects.create(nome="Outro", dono=self.estranho)
+        pb_outro = ProductBacklog.objects.create(projeto=outro)
+        alheia = HistoriaUsuario.objects.create(titulo="Alheia", product_backlog=pb_outro, papel="a", acao="b", beneficio="c")
+        self.client.post(self.url("epico_adicionar_historias", self.emprestimos.pk), {"historias": [alheia.pk]})
+        alheia.refresh_from_db()
+        self.assertIsNone(alheia.epico)
+
+    def test_tirar_do_epico_nao_apaga(self):
+        historia = self.h("Sai", self.emprestimos)
+        self.client.post(self.url("epico_remover_historia", self.emprestimos.pk, historia.pk))
+        historia.refresh_from_db()
+        self.assertIsNone(historia.epico)
+        self.assertEqual(self.client.get(self.url("epico_remover_historia", self.emprestimos.pk, historia.pk)).status_code, 405)
+
+    def test_nova_historia_neste_epico_vem_com_o_epico_escolhido(self):
+        response = self.client.get(self.url("historia_criar") + f"?epico={self.emprestimos.pk}")
+        self.assertEqual(response.context["form"].initial.get("epico"), self.emprestimos.pk)
+        outro = Projeto.objects.create(nome="Outro", dono=self.dono)
+        epico_alheio = Epico.objects.create(projeto=outro, titulo="X")
+        response = self.client.get(self.url("historia_criar") + f"?epico={epico_alheio.pk}")
+        self.assertIsNone(response.context["form"].initial.get("epico"))
+
+    def test_mover_criterio_para_outra_historia(self):
+        grande, nova = self.h("Grande"), self.h("Nova")
+        c = CriterioAceitacao.objects.create(historia_usuario=grande, dado="d", quando="q", entao="e")
+        response = self.client.post(self.url("criterio_editar", grande.pk, c.pk),
+                                    {"dado": "d", "quando": "q", "entao": "e", "historia_usuario": nova.pk}, follow=True)
+        c.refresh_from_db()
+        self.assertEqual(c.historia_usuario, nova)
+        self.assertContains(response, "Critério movido para “Nova”.")
+
+    def test_criterio_nao_vai_para_historia_de_outro_projeto(self):
+        grande = self.h("Grande")
+        c = CriterioAceitacao.objects.create(historia_usuario=grande, dado="d", quando="q", entao="e")
+        outro = Projeto.objects.create(nome="Outro", dono=self.estranho)
+        alheia = HistoriaUsuario.objects.create(titulo="Alheia", product_backlog=ProductBacklog.objects.create(projeto=outro),
+                                                papel="a", acao="b", beneficio="c")
+        response = self.client.post(self.url("criterio_editar", grande.pk, c.pk),
+                                    {"dado": "d", "quando": "q", "entao": "e", "historia_usuario": alheia.pk})
+        self.assertTrue(response.context["form"].errors.get("historia_usuario"))
+        c.refresh_from_db()
+        self.assertEqual(c.historia_usuario, grande)
+
+
+# Dicas embaixo dos campos e erros logo abaixo do próprio campo nos formulários de projeto,
+# épico, membros e Product Backlog
+class FormulariosDicasTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.projeto = Projeto.objects.create(nome="Projeto F", dono=self.dono)
+        ProductBacklog.objects.create(projeto=self.projeto)
+        self.client.force_login(self.dono)
+
+    def url(self, nome, *args):
+        return reverse(nome, args=[self.projeto.pk, *args])
+
+    def test_dicas_aparecem(self):
+        casos = [
+            (reverse("criar_projeto"), "Ex.: Sistema de Biblioteca"),
+            (self.url("editar_projeto"), "Ex.: Sistema de Biblioteca"),
+            (self.url("epico_criar"), "Ex.: Empréstimos"),
+            (self.url("membros_projeto"), "precisa já ter uma conta"),
+            (self.url("editar_product_backlog"), "objetivo do produto"),
+        ]
+        for endereco, dica in casos:
+            with self.subTest(endereco=endereco):
+                response = self.client.get(endereco)
+                self.assertContains(response, dica)
+                self.assertContains(response, "novalidate")
+
+    def test_erro_embaixo_do_campo_no_projeto(self):
+        html = self.client.post(reverse("criar_projeto"), {"nome": "", "descricao": "x"}).content.decode()
+        self.assertTrue(html.index('id="id_nome"') < html.index("O nome do projeto é obrigatório.") < html.index('id="id_descricao"'))
+
+    def test_erro_embaixo_do_campo_no_epico(self):
+        html = self.client.post(self.url("epico_criar"), {"titulo": "", "descricao": ""}).content.decode()
+        self.assertTrue(html.index('id="id_titulo"') < html.index("O nome do épico é obrigatório.") < html.index('id="id_descricao"'))
+
+    def test_erro_embaixo_do_campo_nos_membros(self):
+        response = self.client.post(self.url("membros_projeto"), {"email": "ninguem@exemplo.com"})
+        html = response.content.decode()
+        self.assertIn("campo-com-erro", html)
+        self.assertTrue(html.index('id="id_email"') < html.index("Nenhuma conta com este e-mail."))
+        self.assertContains(self.client.post(self.url("membros_projeto"), {"email": "x"}), "Informe um e-mail válido.")
+
+
+# Acabamento: página do projeto com o resumo de cada área e os mesmos botões de antes
+class PaginaProjetoTests(TestCase):
+    def setUp(self):
+        self.dono = User.objects.create_user("ana", email="ana@exemplo.com", first_name="Ana Souza")
+        self.membro = User.objects.create_user("rui", email="rui@exemplo.com", first_name="Rui Dias")
+        self.projeto = Projeto.objects.create(nome="Projeto R", dono=self.dono)
+        self.projeto.membros.add(self.membro)
+        self.backlog = ProductBacklog.objects.create(projeto=self.projeto)
+        self.client.force_login(self.dono)
+
+    def test_resumo_das_areas(self):
+        HistoriaUsuario.objects.create(titulo="No PB", product_backlog=self.backlog, papel="a", acao="b", beneficio="c")
+        sprint = SprintBacklog.objects.create(projeto=self.projeto, nome="Sprint Atual", **SPRINT_PERIODO)
+        HistoriaUsuario.objects.create(titulo="No Sprint", sprint_backlog=sprint, papel="a", acao="b", beneficio="c")
+        Epico.objects.create(projeto=self.projeto, titulo="E")
+        response = self.client.get(reverse("detalhe_projeto", args=[self.projeto.pk]))
+        resumo = response.context["resumo"]
+        self.assertEqual((resumo["no_backlog"], resumo["historias"], resumo["epicos"], resumo["membros"]), (1, 2, 1, 2))
+        self.assertEqual(resumo["sprint_atual"], sprint)
+        for botao in ("Ver Product Backlog", "Sprints", "Histórias", "Épicos", "Ver membros", "Editar projeto"):
+            self.assertContains(response, botao)
+
+    def test_membro_ve_sair_e_nao_ve_editar(self):
+        self.client.force_login(self.membro)
+        response = self.client.get(reverse("detalhe_projeto", args=[self.projeto.pk]))
+        self.assertContains(response, "Sair do projeto")
+        self.assertNotContains(response, "Editar projeto")

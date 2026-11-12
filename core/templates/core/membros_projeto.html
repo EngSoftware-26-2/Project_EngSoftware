@@ -1,19 +1,21 @@
 {% extends "core/base.html" %}
+{% load core_extras %}
 {% block titulo %}Membros do Projeto{% endblock %}
 {% block conteudo %}
-<h2>Membros de {{ projeto.nome }}</h2>
+<div class="linha-titulo"><h2>Membros</h2></div>
 
-<div class="cartao">
-  <h3>Dono do projeto</h3>
-  <p>{{ projeto.dono.first_name }} ({{ projeto.dono.email }})</p>
+<div class="cartao pessoa-dono">
+  <span class="avatar avatar-grande">{{ projeto.dono|iniciais }}</span>
+  <div><strong>{{ projeto.dono.first_name|default:projeto.dono.email }}</strong> <span class="etiqueta">Dono do projeto</span><br><span class="sub">{{ projeto.dono.email }}</span></div>
 </div>
 
 {% if projeto.dono_id == request.user.id %}
 <div class="cartao">
   <h3>Adicionar membro</h3>
-  <form method="post">
+  <form method="post" novalidate class="form-membro">
     {% csrf_token %}
-    {{ form.as_p }}
+    {% include "core/_erros_gerais.html" %}
+    {% include "core/_campo.html" with campo=form.email %}
     <button type="submit">Adicionar membro</button>
   </form>
 </div>
@@ -21,17 +23,17 @@
 
 <h3>Membros do projeto</h3>
 {% if membros %}
-<table>
+<table class="tabela-membros">
   <tr><th>Nome</th><th>E-mail</th>{% if projeto.dono_id == request.user.id %}<th></th>{% endif %}</tr>
   {% for membro in membros %}
   <tr>
-    <td>{{ membro.first_name }}</td>
+    <td><span class="responsavel"><span class="avatar">{{ membro|iniciais }}</span> {{ membro.first_name|default:membro.email }}</span></td>
     <td>{{ membro.email }}</td>
     {% if projeto.dono_id == request.user.id %}
     <td>
       <form method="post" action="{% url 'remover_membro' projeto.id membro.id %}" onsubmit="return confirm('Deseja remover este membro?')">
         {% csrf_token %}
-        <button type="submit" class="perigo">Remover</button>
+        <button type="submit" class="secundario">Remover</button>
       </form>
     </td>
     {% endif %}
@@ -39,8 +41,8 @@
   {% endfor %}
 </table>
 {% else %}
-<p class="vazio">Este projeto ainda não possui membros.</p>
+<p class="vazio">Este projeto ainda não possui membros. {% if projeto.dono_id == request.user.id %}Adicione pelo e-mail de quem já tem conta.{% endif %}</p>
 {% endif %}
 
-<div class="acoes"><a class="botao secundario" href="{% url 'inicio' %}">Voltar aos projetos</a></div>
+<p><a href="{% url 'detalhe_projeto' projeto.id %}">← Voltar ao projeto</a></p>
 {% endblock %}

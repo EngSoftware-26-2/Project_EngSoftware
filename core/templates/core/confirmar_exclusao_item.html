@@ -1,15 +1,20 @@
 {% extends "core/base.html" %}
-{% comment %} Confirmação de exclusão de história ou épico. O confirmar_exclusao.html do
-   Guilherme continua sendo usado para projeto e Product Backlog. {% endcomment %}
+{% comment %} Confirmação de exclusão de história, épico, critério ou Sprint. O
+   confirmar_exclusao.html continua sendo usado para projeto e Product Backlog. {% endcomment %}
 {% block titulo %}Excluir – {{ projeto.nome }}{% endblock %}
 {% block conteudo %}
-<h2>Excluir {{ tipo }} “{{ objeto }}”?</h2>
-{% if aviso %}<p>{{ aviso }}</p>{% endif %}
-{% comment %} Mostra o motivo quando a exclusão é recusada (ex.: Sprint sem Product Backlog para receber as histórias). {% endcomment %}
-{% if erro %}<p class="erro" role="alert">{{ erro }}</p>{% endif %}
-<form method="post">
-  {% csrf_token %}
-  <button class="botao perigo" type="submit">Confirmar exclusão</button>
-  <a class="botao secundario" href="{{ voltar_url }}">Cancelar</a>
-</form>
+<div class="cartao cartao-medio">
+  <h2>Excluir {{ tipo }} “{{ objeto }}”?</h2>
+  <p class="sub">Esta ação não pode ser desfeita.</p>
+  {% if aviso %}<div class="aviso">{{ aviso }}</div>{% endif %}
+  {% comment %} Mostra o motivo quando a exclusão é recusada (ex.: Sprint sem Product Backlog para receber as histórias). {% endcomment %}
+  {% if erro %}<div class="mensagem erro-msg" role="alert">{{ erro }}</div>{% endif %}
+  <form method="post">
+    {% csrf_token %}
+    <div class="botoes">
+      <button class="perigo" type="submit">Confirmar exclusão</button>
+      <a class="botao secundario" href="{{ voltar_url }}">Cancelar</a>
+    </div>
+  </form>
+</div>
 {% endblock %}

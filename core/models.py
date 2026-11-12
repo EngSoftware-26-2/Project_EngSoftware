@@ -49,13 +49,71 @@ class SprintBacklog(models.Model):
     data_inicio = models.DateField("Data de início")
     data_fim = models.DateField("Data de fim")
 
+    # Encerramento e cancelamento. O Sprint pode ser encerrado antes do previsto ("Encerrar
+    # Sprint") ou cancelado quando o trabalho deixa de fazer sentido ("Cancelar Sprint"); nos
+    # dois casos só o dono do projeto decide (no Scrum, o Product Owner). Quando passa a data
+    # de fim sem ninguém encerrar, o sistema encerra sozinho (encerrado_por fica vazio).
+    encerrado_em = models.DateField("Encerrado em", null=True, blank=True)
+    encerrado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="sprints_encerrados", verbose_name="Encerrado por",
+    )
+    cancelado = models.BooleanField("Cancelado", default=False)
+    motivo_cancelamento = models.TextField("Motivo", blank=True)
+
+    # Situação do Sprint, calculada: não é guardada no banco, então nunca fica desatualizada.
+    STATUS_PLANEJADO = "planejado"
+    STATUS_EM_ANDAMENTO = "em_andamento"
+    STATUS_CONCLUIDO = "concluido"
+    STATUS_CANCELADO = "cancelado"
+    STATUS_NOMES = {
+        STATUS_PLANEJADO: "Planejado",
+        STATUS_EM_ANDAMENTO: "Em andamento",
+        STATUS_CONCLUIDO: "Concluído",
+        STATUS_CANCELADO: "Cancelado",
+    }
+    DURACAO_MAXIMA_DIAS = 30
+
     class Meta:
         constraints = [
             models.CheckConstraint(
                 condition=Q(data_fim__gte=F("data_inicio")),
                 name="sprint_periodo_valido",
             ),
+            # Cancelado sempre tem a data do cancelamento.
+            models.CheckConstraint(
+                condition=Q(cancelado=False) | Q(encerrado_em__isnull=False),
+                name="sprint_cancelado_com_data",
+            ),
         ]
+
+    def status_em(self, hoje):
+        if self.cancelado:
+            return self.STATUS_CANCELADO
+        if self.encerrado_em is not None or hoje > self.data_fim:
+            return self.STATUS_CONCLUIDO
+        if hoje < self.data_inicio:
+            return self.STATUS_PLANEJADO
+        return self.STATUS_EM_ANDAMENTO
+
+    @property
+    def status(self):
+        from django.utils import timezone
+        return self.status_em(timezone.localdate())
+
+    @property
+    def status_nome(self):
+        return self.STATUS_NOMES[self.status]
+
+    @property
+    def fechado(self):
+        # Concluído ou cancelado: a página vira histórico e o quadro não muda mais.
+        return self.status in (self.STATUS_CONCLUIDO, self.STATUS_CANCELADO)
+
+    @property
+    def fim_efetivo(self):
+        # Até quando o Sprint ocupou o calendário. Encerrado antes, libera os dias seguintes.
+        return self.encerrado_em if self.encerrado_em and self.encerrado_em < self.data_fim else self.data_fim
 
     def clean(self):
         super().clean()
@@ -142,6 +200,26 @@ class HistoriaUsuario(models.Model):
     # ele usa a mesma escala dos Story Points (0, 1, 2, 3, 5, 8, 13, 21, 34 ou 55).
     effort = models.IntegerField("Effort", choices=STORY_POINTS_CHOICES, null=True, blank=True, help_text="Esforço na escala de pontos de história")
 
+    # Situação da história dentro do Sprint (quadro Kanban: A fazer, Em desenvolvimento,
+    # Concluída). Toda história começa "A fazer". No Product Backlog a situação não aparece e
+    # volta a ser "A fazer" (ver save()), porque a história ainda não está em trabalho.
+    SITUACAO_A_FAZER = 'a_fazer'
+    SITUACAO_EM_DESENVOLVIMENTO = 'em_desenvolvimento'
+    SITUACAO_CONCLUIDA = 'concluida'
+    SITUACAO_CHOICES = [
+        (SITUACAO_A_FAZER, 'A fazer'),
+        (SITUACAO_EM_DESENVOLVIMENTO, 'Em desenvolvimento'),
+        (SITUACAO_CONCLUIDA, 'Concluída'),
+    ]
+    situacao = models.CharField("Situação", max_length=20, choices=SITUACAO_CHOICES, default=SITUACAO_A_FAZER)
+
+    # Responsável pela história: o dono ou um membro do projeto. É opcional ("Sem
+    # responsável"). Se a pessoa sair do projeto, a história fica sem responsável (signals.py).
+    responsavel = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='historias_responsavel', verbose_name="Responsável",
+    )
+
     class Meta:
         # Restrições no banco. Os "choices" só limitam o formulário; um valor fora
         # da escala salvo por outro caminho (shell, script, outra view) entrava no banco.
@@ -174,6 +252,10 @@ class HistoriaUsuario(models.Model):
                 condition=Q(effort__isnull=True) | Q(effort__in=[0, 1, 2, 3, 5, 8, 13, 21, 34, 55]),
                 name='historia_effort_fibonacci',
             ),
+            models.CheckConstraint(
+                condition=Q(situacao__in=['a_fazer', 'em_desenvolvimento', 'concluida']),
+                name='historia_situacao_valida',
+            ),
         ]
 
     # ------------------------------------------------------------------
@@ -198,10 +280,21 @@ class HistoriaUsuario(models.Model):
         backlog = self.product_backlog if self.product_backlog_id else self.sprint_backlog
         if self.epico_id and self.epico.projeto_id != backlog.projeto_id:
             raise ValidationError({"epico": "O épico e o backlog devem pertencer ao mesmo projeto."})
+        # O responsável precisa participar do projeto (dono ou membro).
+        if self.responsavel_id:
+            projeto = backlog.projeto
+            if self.responsavel_id != projeto.dono_id and not projeto.membros.filter(pk=self.responsavel_id).exists():
+                raise ValidationError({"responsavel": "O responsável precisa ser o dono ou um membro do projeto."})
 
     def save(self, *args, **kwargs):
         # ModelForms já validam; esta chamada também protege criações pelo ORM.
         # Valida o estado efetivamente persistido quando save é parcial.
+        # No Product Backlog a história ainda não está em trabalho: a situação volta a ser
+        # "A fazer". Assim, se ela for para um Sprint de novo, entra na primeira coluna.
+        if self.sprint_backlog_id is None and self.situacao != self.SITUACAO_A_FAZER:
+            self.situacao = self.SITUACAO_A_FAZER
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"situacao"}
         update_fields = kwargs.get("update_fields")
         if update_fields and self.pk:
             persisted = type(self).objects.get(pk=self.pk)
@@ -246,6 +339,26 @@ class HistoriaUsuario(models.Model):
         score = self.rice_score
         return f"{score:g}" if score == int(score) else f"{score:.2f}"
 
+    # ------------------------------------------------------------------
+    # Avisos de boas práticas (INVEST). Não bloqueiam nada, só aparecem nas telas.
+    # ------------------------------------------------------------------
+    # "Small": com 13 pontos ou mais, a história costuma ser grande demais para um Sprint e
+    # vale dividir (ou transformar em épico).
+    LIMITE_HISTORIA_GRANDE = 13
+
+    @property
+    def grande_demais(self):
+        return self.story_points is not None and self.story_points >= self.LIMITE_HISTORIA_GRANDE
+
+    # "Testável": sem critério de aceitação não há como confirmar que a história está pronta.
+    # As listas usam annotate(num_criterios=...) para não fazer uma consulta por história.
+    @property
+    def sem_criterios(self):
+        quantidade = getattr(self, "num_criterios", None)
+        if quantidade is None:
+            quantidade = self.criterios_aceitacao.count() if self.pk else 0
+        return quantidade == 0
+
     @property
     def story_points_display(self):
         return "sem estimativa" if self.story_points is None else f"{self.story_points} pts"
@@ -271,3 +384,21 @@ class CriterioAceitacao(models.Model):
 
     def __str__(self):
         return f"Critério de aceitação da história {self.historia_usuario_id}"
+
+
+# Histórico do Sprint encerrado ou cancelado: as histórias que não foram concluídas voltam
+# para o Product Backlog, e esta tabela guarda como elas estavam no dia (título, pontos e
+# situação), para a página do Sprint mostrar o que ficou para depois.
+class HistoriaDevolvida(models.Model):
+    sprint = models.ForeignKey(SprintBacklog, on_delete=models.CASCADE, related_name="historias_devolvidas")
+    # Se a história for excluída depois, o registro continua, só sem o link.
+    historia = models.ForeignKey(HistoriaUsuario, on_delete=models.SET_NULL, null=True, blank=True, related_name="devolucoes")
+    titulo = models.CharField("Título", max_length=200)
+    story_points = models.IntegerField("Story Points", null=True, blank=True)
+    situacao = models.CharField("Situação no encerramento", max_length=20, choices=HistoriaUsuario.SITUACAO_CHOICES)
+
+    class Meta:
+        ordering = ["titulo"]
+
+    def __str__(self):
+        return f"{self.titulo} ({self.sprint.nome})"

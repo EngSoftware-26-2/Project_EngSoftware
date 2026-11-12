@@ -28,6 +28,7 @@ urlpatterns = [
     path("projetos/<int:pk>/historias/<int:historia_id>/excluir/", views.historia_excluir, name="historia_excluir"),
     # Mover história entre backlogs (requisito 8; HU11)
     path("projetos/<int:pk>/historias/<int:historia_id>/mover/", views.historia_mover, name="historia_mover"),
+    path("projetos/<int:pk>/historias/<int:historia_id>/situacao/", views.historia_situacao, name="historia_situacao"),
     # Critérios de aceitação de uma história (requisitos 12 e 13)
     path("projetos/<int:pk>/historias/<int:historia_id>/criterios/novo/", views.criterio_criar, name="criterio_criar"),
     path("projetos/<int:pk>/historias/<int:historia_id>/criterios/<int:criterio_id>/editar/", views.criterio_editar, name="criterio_editar"),
@@ -36,6 +37,8 @@ urlpatterns = [
     path("projetos/<int:pk>/sprints/", views.sprint_lista, name="sprint_lista"),
     path("projetos/<int:pk>/sprints/novo/", views.sprint_criar, name="sprint_criar"),
     path("projetos/<int:pk>/sprints/<int:sprint_id>/", views.sprint_detalhe, name="sprint_detalhe"),
+    path("projetos/<int:pk>/sprints/<int:sprint_id>/encerrar/", views.sprint_encerrar, name="sprint_encerrar"),
+    path("projetos/<int:pk>/sprints/<int:sprint_id>/cancelar/", views.sprint_cancelar, name="sprint_cancelar"),
     path("projetos/<int:pk>/sprints/<int:sprint_id>/editar/", views.sprint_editar, name="sprint_editar"),
     path("projetos/<int:pk>/sprints/<int:sprint_id>/excluir/", views.sprint_excluir, name="sprint_excluir"),
     # Épicos (HU15, HU16) e histórias ligadas a cada um (HU17)
@@ -43,5 +46,7 @@ urlpatterns = [
     path("projetos/<int:pk>/epicos/novo/", views.epico_criar, name="epico_criar"),
     path("projetos/<int:pk>/epicos/<int:epico_id>/", views.epico_detalhe, name="epico_detalhe"),
     path("projetos/<int:pk>/epicos/<int:epico_id>/editar/", views.epico_editar, name="epico_editar"),
+    path("projetos/<int:pk>/epicos/<int:epico_id>/adicionar-historias/", views.epico_adicionar_historias, name="epico_adicionar_historias"),
+    path("projetos/<int:pk>/epicos/<int:epico_id>/historias/<int:historia_id>/remover/", views.epico_remover_historia, name="epico_remover_historia"),
     path("projetos/<int:pk>/epicos/<int:epico_id>/excluir/", views.epico_excluir, name="epico_excluir"),
 ]

@@ -1,28 +1,66 @@
 {% extends "core/base.html" %}
-{% comment %} Detalhe do Sprint Backlog com as histórias que estão nele (HU09, HU10) {% endcomment %}
+{% load core_extras %}
+{% comment %} Detalhe do Sprint Backlog (HU09, HU10) como quadro Kanban: uma coluna por
+   situação da história. Cada cartão muda de coluna pelos botões embaixo dele. {% endcomment %}
 {% block titulo %}{{ sprint.nome }} – {{ projeto.nome }}{% endblock %}
 {% block conteudo %}
-<h2>{{ sprint.nome }}</h2>
-<p>De {{ sprint.data_inicio|date:"d/m/Y" }} a {{ sprint.data_fim|date:"d/m/Y" }} · {{ historias|length }} histórias · {{ total_pontos }} Story Points</p>
+<div class="linha-titulo">
+  <div>
+    <h2>{{ sprint.nome }} {% include "core/_status_sprint.html" with s=sprint %}</h2>
+    <p class="sub">{{ sprint.data_inicio|date:"d/m/Y" }} a {{ sprint.data_fim|date:"d/m/Y" }}
+      · {% if sprint.status == "planejado" %}começa em {{ dias_para_comecar }} dia{{ dias_para_comecar|pluralize }}{% elif dias_restantes == 0 %}último dia{% else %}{{ dias_restantes }} dia{{ dias_restantes|pluralize }} restante{{ dias_restantes|pluralize }}{% endif %}
+      · {{ historias|length }} história{{ historias|length|pluralize }} · {{ total_pontos }} Story Points</p>
+  </div>
+  <div class="acoes">
+    <a class="botao secundario" href="{% url 'sprint_editar' projeto.id sprint.id %}">Editar</a>
+    {% if pode_encerrar %}<a class="botao" href="{% url 'sprint_encerrar' projeto.id sprint.id %}">Encerrar Sprint</a>{% endif %}
+    {% if pode_cancelar %}<a class="botao perigo" href="{% url 'sprint_cancelar' projeto.id sprint.id %}">Cancelar Sprint</a>{% endif %}
+    <a class="botao secundario" href="{% url 'sprint_excluir' projeto.id sprint.id %}">Excluir</a>
+  </div>
+</div>
+
 {% if historias %}
-<table>
-  <tr><th>Título</th><th>Story Points</th><th>MoSCoW</th><th>RICE</th><th>Épico</th></tr>
-  {% for h in historias %}
-  <tr>
-    <td><a href="{% url 'historia_detalhe' projeto.id h.id %}">{{ h.titulo }}</a></td>
-    <td>{{ h.story_points_display }}</td>
-    <td>{{ h.moscow|default:"—" }}</td>
-    <td>{{ h.rice_display }}</td>
-    <td>{{ h.epico|default:"Sem épico" }}</td>
-  </tr>
+<div class="quadro">
+  {% for coluna in colunas %}
+  <section class="coluna coluna-{{ coluna.valor }}">
+    <h3>{{ coluna.nome }} <small>{{ coluna.historias|length }} · {{ coluna.pontos }} pts</small></h3>
+    {% for h in coluna.historias %}
+    <article class="cartao-historia">
+      <a class="cartao-historia-titulo" href="{% url 'historia_detalhe' projeto.id h.id %}">{{ h.titulo }}</a>
+      <div class="cartao-historia-meta">
+        <span class="pill">{{ h.story_points_display }}</span>
+        {% if h.moscow %}<span class="pill moscow-{{ h.moscow }}">{{ h.get_moscow_display }}</span>{% endif %}
+        {% if h.epico %}<span class="pill">{{ h.epico }}</span>{% endif %}
+        {% include "core/_avisos_historia.html" with h=h %}
+      </div>
+      <div class="responsavel">
+        {% if h.responsavel %}<span class="avatar">{{ h.responsavel|iniciais }}</span> {{ h.responsavel.first_name|default:h.responsavel.email }}
+        {% else %}<span class="avatar avatar-vazio">?</span> Sem responsável{% endif %}
+      </div>
+      <form class="mover-cartao" method="post" action="{% url 'historia_situacao' projeto.id h.id %}">
+        {% csrf_token %}
+        {% if h.situacao == "a_fazer" %}
+        <button type="submit" name="situacao" value="em_desenvolvimento">Iniciar →</button>
+        {% elif h.situacao == "em_desenvolvimento" %}
+        <button type="submit" name="situacao" value="a_fazer">← A fazer</button>
+        <button type="submit" name="situacao" value="concluida">Concluir →</button>
+        {% else %}
+        <button type="submit" name="situacao" value="em_desenvolvimento">← Reabrir</button>
+        {% endif %}
+      </form>
+    </article>
+    {% empty %}
+    <p class="coluna-vazia">Nenhuma história.</p>
+    {% endfor %}
+  </section>
   {% endfor %}
-</table>
+</div>
 {% else %}
-<p class="vazio">Este Sprint Backlog ainda está vazio.</p>
+<div class="cartao estado-vazio">
+  <h2>Este Sprint Backlog ainda está vazio.</h2>
+  <p>Abra uma história do Product Backlog e use “Mover para” para trazê-la a este Sprint.</p>
+  <a class="botao" href="{% url 'product_backlog' projeto.id %}">Ir para o Product Backlog</a>
+</div>
 {% endif %}
-<p>
-  <a class="botao" href="{% url 'sprint_editar' projeto.id sprint.id %}">Editar</a>
-  <a class="botao perigo" href="{% url 'sprint_excluir' projeto.id sprint.id %}">Excluir</a>
-  <a class="botao secundario" href="{% url 'sprint_lista' projeto.id %}">Voltar</a>
-</p>
+<p><a href="{% url 'sprint_lista' projeto.id %}">← Voltar para os Sprint Backlogs</a></p>
 {% endblock %}

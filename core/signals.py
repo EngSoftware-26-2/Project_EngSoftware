@@ -1,7 +1,7 @@
 """Protege exclusões pela aplicação e pelo admin, inclusive QuerySet.delete()."""
 from django.db.models import Q
 from django.db.models.deletion import ProtectedError
-from django.db.models.signals import pre_delete
+from django.db.models.signals import m2m_changed, pre_delete
 from django.dispatch import receiver
 
 from .models import HistoriaUsuario, ProductBacklog, Projeto, SprintBacklog
@@ -48,7 +48,8 @@ def devolver_historias_ao_product_backlog(sender, instance, using, origin, **kwa
             historias,
         )
     if backlog is not None:
-        historias.update(product_backlog_id=backlog.pk, sprint_backlog_id=None)
+        historias.update(product_backlog_id=backlog.pk, sprint_backlog_id=None,
+                         situacao=HistoriaUsuario.SITUACAO_A_FAZER)
 
 
 # HU07 - Ao excluir o projeto, apaga também as histórias que estão só em Sprint Backlogs
@@ -67,3 +68,15 @@ def excluir_historias_do_projeto(sender, instance, using, **kwargs):
     # Histórias do Product Backlog já fazem parte da cascata do coletor Django.
     # As demais sobreviveriam por causa de SET_NULL nos Sprints e épicos.
     historias.filter(product_backlog__isnull=True).delete()
+
+
+# Responsável (passo da situação/responsável): quando alguém deixa de ser membro do projeto
+# (removido pelo dono ou saiu sozinho), as histórias daquele projeto que estavam com essa
+# pessoa ficam "Sem responsável". As histórias em si não mudam.
+@receiver(m2m_changed, sender=Projeto.membros.through)
+def limpar_responsavel_ao_sair(sender, instance, action, reverse, pk_set, using, **kwargs):
+    if action != "post_remove" or reverse or not pk_set:
+        return
+    historias_do_projeto(instance.pk, using).filter(
+        responsavel_id__in=pk_set,
+    ).exclude(responsavel_id=instance.dono_id).update(responsavel=None)

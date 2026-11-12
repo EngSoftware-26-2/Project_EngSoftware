@@ -1,23 +1,31 @@
 {% extends "core/base.html" %}
+{% comment %} HU12 a HU14 - Todas as histórias do projeto, em qualquer backlog. {% endcomment %}
 {% block titulo %}Histórias – {{ projeto.nome }}{% endblock %}
 {% block conteudo %}
-<h2>Histórias de usuário</h2>
-<a class="botao" href="{% url 'historia_criar' projeto.id %}">Nova história</a>
+<div class="linha-titulo">
+  <h2>Histórias de usuário</h2>
+  <a class="botao" href="{% url 'historia_criar' projeto.id %}">Nova história</a>
+</div>
 {% if historias %}
 <table>
-  <tr><th>Título</th><th>Story Points</th><th>MoSCoW</th><th>RICE</th><th>Épico</th><th>Backlog</th></tr>
+  <tr><th>História</th><th>Story Points</th><th>MoSCoW</th><th>RICE</th><th>Épico</th><th>Onde está</th></tr>
   {% for h in historias %}
   <tr>
-    <td><a href="{% url 'historia_detalhe' projeto.id h.id %}">{{ h.titulo }}</a></td>
-    <td>{{ h.story_points_display }}</td>
-    <td>{{ h.moscow|default:"—" }}</td>
-    <td>{{ h.rice_display }}</td>
-    <td>{{ h.epico|default:"Sem épico" }}</td>
-    <td>{% if h.sprint_backlog %}{{ h.sprint_backlog.nome }}{% else %}Product Backlog{% endif %}</td>
+    <td><a href="{% url 'historia_detalhe' projeto.id h.id %}">{{ h.titulo }}</a>
+      {% if h.grande_demais or h.sem_criterios %}<div class="etiquetas-linha">{% include "core/_avisos_historia.html" with h=h %}</div>{% endif %}</td>
+    <td class="nowrap">{{ h.story_points_display }}</td>
+    <td>{% if h.moscow %}<span class="pill moscow-{{ h.moscow }}">{{ h.get_moscow_display }}</span>{% else %}<span class="sub">—</span>{% endif %}</td>
+    <td class="nowrap">{{ h.rice_display }}</td>
+    <td>{% if h.epico %}<a href="{% url 'epico_detalhe' projeto.id h.epico.id %}">{{ h.epico }}</a>{% else %}<span class="sub">Sem épico</span>{% endif %}</td>
+    <td>{% if h.sprint_backlog %}<a href="{% url 'sprint_detalhe' projeto.id h.sprint_backlog.id %}">{{ h.sprint_backlog.nome }}</a> <span class="situacao situacao-{{ h.situacao }}">{{ h.get_situacao_display }}</span>{% else %}<a href="{% url 'product_backlog' projeto.id %}">Product Backlog</a>{% endif %}</td>
   </tr>
   {% endfor %}
 </table>
 {% else %}
-<p class="vazio">Ainda não há histórias neste projeto.</p>
+<div class="cartao estado-vazio">
+  <h2>Ainda não há histórias neste projeto.</h2>
+  <p>Crie a primeira história no formato “Como um…, eu quero…, para…”. Ela começa no Product Backlog.</p>
+  <a class="botao" href="{% url 'historia_criar' projeto.id %}">Nova história</a>
+</div>
 {% endif %}
 {% endblock %}

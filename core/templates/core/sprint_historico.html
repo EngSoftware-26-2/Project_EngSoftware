@@ -1,0 +1,69 @@
+{% extends "core/base.html" %}
+{% load core_extras %}
+{% comment %} Página de um Sprint concluído ou cancelado: histórico só para consulta, com o que
+   foi concluído e o que voltou para o Product Backlog. {% endcomment %}
+{% block titulo %}{{ sprint.nome }} – {{ projeto.nome }}{% endblock %}
+{% block conteudo %}
+<p class="sub"><a href="{% url 'sprint_lista' projeto.id %}">← Sprint Backlogs</a></p>
+
+{% if sprint.cancelado %}
+<div class="faixa">
+  <strong>Sprint cancelado em {{ sprint.encerrado_em|date:"d/m/Y" }}{% if sprint.encerrado_por %} por {{ sprint.encerrado_por.first_name|default:sprint.encerrado_por.email }}{% endif %}.</strong>
+  {% if sprint.motivo_cancelamento %}<br>Motivo: {{ sprint.motivo_cancelamento }}{% endif %}
+</div>
+{% endif %}
+
+<div class="linha-titulo">
+  <div>
+    <h2>{{ sprint.nome }} {% include "core/_status_sprint.html" with s=sprint %}</h2>
+    <p class="sub">{{ sprint.data_inicio|date:"d/m/Y" }} a {{ sprint.data_fim|date:"d/m/Y" }}
+      {% if not sprint.cancelado %}·
+        {% if sprint.encerrado_por %}encerrado em {{ sprint.encerrado_em|date:"d/m/Y" }} por {{ sprint.encerrado_por.first_name|default:sprint.encerrado_por.email }}{% if antecipado %} ({{ dias_antes }} dia{{ dias_antes|pluralize }} antes do previsto){% endif %}
+        {% else %}encerrado automaticamente ao fim do prazo{% endif %}
+      {% endif %}</p>
+  </div>
+</div>
+
+<div class="resumo">
+  <div><strong>{{ resumo.concluidas }}</strong><span>história{{ resumo.concluidas|pluralize }} concluída{{ resumo.concluidas|pluralize }}</span></div>
+  <div><strong>{{ resumo.devolvidas }}</strong><span>voltaram para o Product Backlog</span></div>
+  <div><strong>{{ resumo.pontos_concluidos }} pts</strong><span>concluídos (velocidade)</span></div>
+</div>
+
+<h3 class="titulo-secao"><span class="ponto ponto-verde"></span>Concluídas neste Sprint</h3>
+{% if concluidas %}
+<table>
+  <tr><th>História</th><th>Story Points</th><th>MoSCoW</th><th>Responsável</th></tr>
+  {% for h in concluidas %}
+  <tr>
+    <td><a href="{% url 'historia_detalhe' projeto.id h.id %}">{{ h.titulo }}</a></td>
+    <td>{{ h.story_points_display }}</td>
+    <td>{% if h.moscow %}<span class="pill moscow-{{ h.moscow }}">{{ h.get_moscow_display }}</span>{% else %}—{% endif %}</td>
+    <td>{% if h.responsavel %}<span class="responsavel"><span class="avatar">{{ h.responsavel|iniciais }}</span> {{ h.responsavel.first_name|default:h.responsavel.email }}</span>{% else %}<span class="sub">Sem responsável</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="vazio">Nenhuma história foi concluída neste Sprint.</p>
+{% endif %}
+
+<h3 class="titulo-secao"><span class="ponto ponto-cinza"></span>Voltaram para o Product Backlog</h3>
+{% if devolvidas %}
+<p class="sub">Não foram concluídas até o {% if sprint.cancelado %}cancelamento{% else %}encerramento{% endif %}. Os Story Points são os que tinham no dia.</p>
+<table>
+  <tr><th>História</th><th>Story Points</th><th>Situação no dia</th><th>Onde está agora</th></tr>
+  {% for d in devolvidas %}
+  <tr>
+    <td>{% if d.historia %}<a href="{% url 'historia_detalhe' projeto.id d.historia.id %}">{{ d.titulo }}</a>{% else %}{{ d.titulo }}{% endif %}</td>
+    <td>{% if d.story_points is None %}sem estimativa{% else %}{{ d.story_points }} pts{% endif %}</td>
+    <td><span class="situacao situacao-{{ d.situacao }}">{{ d.get_situacao_display }}</span></td>
+    <td>{% if not d.historia %}<span class="sub">História excluída</span>
+      {% elif d.historia.sprint_backlog %}<a href="{% url 'sprint_detalhe' projeto.id d.historia.sprint_backlog.id %}">{{ d.historia.sprint_backlog.nome }}</a>
+      {% else %}<a href="{% url 'product_backlog' projeto.id %}">Product Backlog</a>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="vazio">Nenhuma história voltou para o Product Backlog.</p>
+{% endif %}
+{% endblock %}
