@@ -71,6 +71,110 @@ class AutenticacaoTests(TestCase):
         self.assertNotIn("_auth_user_id", self.client.session)
 
 
+# HU01 - Regras dos campos do cadastro (nome, e-mail e senha), dicas e erros embaixo do campo
+class CadastroRegrasTests(TestCase):
+    SENHA = "SenhaForte!482"
+
+    def cadastrar(self, **dados):
+        base = {"nome": "Ana Souza", "email": "ana@example.com",
+                "senha": self.SENHA, "confirmar_senha": self.SENHA}
+        base.update(dados)
+        if "senha" in dados and "confirmar_senha" not in dados:
+            base["confirmar_senha"] = dados["senha"]
+        return self.client.post(reverse("cadastro"), base)
+
+    def erros(self, response, campo):
+        return response.context["form"].errors.get(campo, [])
+
+    def test_nome_limites_de_tamanho(self):
+        for nome, aceito in [("Al", False), ("Ana", True), ("A" + "a" * 49, True), ("A" + "a" * 50, False)]:
+            with self.subTest(tamanho=len(nome)):
+                User.objects.all().delete()
+                response = self.cadastrar(nome=nome)
+                if aceito:
+                    self.assertRedirects(response, reverse("inicio"))
+                    self.client.logout()
+                else:
+                    self.assertTrue(self.erros(response, "nome"))
+                    self.assertFalse(User.objects.exists())
+
+    def test_nome_recusa_numero_minuscula_simbolo_e_espaco_duplo(self):
+        casos = {
+            "Ana 2": "O nome não pode conter números.",
+            "ana Souza": "O nome deve começar com letra maiúscula.",
+            "Ana@Souza": "O nome só pode ter letras, espaços, hífen (-) e apóstrofo (').",
+            "Ana  Souza": "O nome não pode ter espaços duplos.",
+        }
+        for nome, mensagem in casos.items():
+            with self.subTest(nome=nome):
+                response = self.cadastrar(nome=nome)
+                self.assertIn(mensagem, self.erros(response, "nome"))
+                self.assertFalse(User.objects.exists())
+
+    def test_nome_aceita_acento_hifen_e_apostrofo(self):
+        response = self.cadastrar(nome="João D'Ávila-Conceição")
+        self.assertRedirects(response, reverse("inicio"))
+        self.assertEqual(User.objects.get().first_name, "João D'Ávila-Conceição")
+
+    def test_senha_recusa_cada_regra_faltando(self):
+        casos = {
+            "Sen!a12": "A senha deve ter entre 8 e 64 caracteres.",
+            "senhaforte!482": "A senha precisa de pelo menos uma letra maiúscula.",
+            "SENHAFORTE!482": "A senha precisa de pelo menos uma letra minúscula.",
+            "SenhaForte!abc": "A senha precisa de pelo menos um número.",
+            "SenhaForte482": "A senha precisa de pelo menos um símbolo (ex.: ! @ # $).",
+            "Aa1!" + "x" * 61: "A senha deve ter entre 8 e 64 caracteres.",
+        }
+        for senha, mensagem in casos.items():
+            with self.subTest(senha=senha):
+                response = self.cadastrar(senha=senha)
+                self.assertIn(mensagem, self.erros(response, "senha"))
+                self.assertFalse(User.objects.exists())
+
+    def test_senha_nos_limites_de_8_e_64_e_aceita(self):
+        for senha in ["Sen!a123", "Aa1!" + "x" * 60]:
+            with self.subTest(tamanho=len(senha)):
+                User.objects.all().delete()
+                self.assertRedirects(self.cadastrar(senha=senha), reverse("inicio"))
+                self.client.logout()
+
+    def test_senha_parecida_com_o_email_e_recusada(self):
+        response = self.cadastrar(email="robertacarvalho@example.com", senha="Robertacarvalho!1")
+        self.assertTrue(self.erros(response, "senha"))
+        self.assertFalse(User.objects.exists())
+
+    def test_email_invalido_e_longo_demais(self):
+        for email in ["ana.example.com", "a" * 90 + "@example.com"]:
+            with self.subTest(email=email):
+                response = self.cadastrar(email=email)
+                self.assertTrue(self.erros(response, "email"))
+                self.assertFalse(User.objects.exists())
+
+    def test_tela_mostra_dicas_e_erro_embaixo_do_campo(self):
+        response = self.client.get(reverse("cadastro"))
+        self.assertContains(response, "3 a 50 letras, iniciar com maiúscula")
+        self.assertContains(response, "com maiúscula, minúscula, número e símbolo")
+        self.assertContains(response, "novalidate")
+
+        html = self.cadastrar(nome="Ana 2").content.decode()
+        campo_nome = html.index('id="id_nome"')
+        erro = html.index("O nome não pode conter números.")
+        campo_email = html.index('id="id_email"')
+        self.assertLess(campo_nome, erro)
+        self.assertLess(erro, campo_email)
+        self.assertIn("campo-com-erro", html)
+
+    def test_login_mostra_erro_geral_e_dica(self):
+        response = self.client.post(reverse("login"), {"email": "ninguem@example.com", "senha": "x"})
+        self.assertContains(response, "E-mail ou senha inválidos.")
+        self.assertContains(response, "O e-mail usado no cadastro.")
+
+    def test_conta_antiga_fora_das_regras_continua_entrando(self):
+        User.objects.create_user("velho", email="velho@example.com", password="senhaantiga", first_name="x")
+        response = self.client.post(reverse("login"), {"email": "velho@example.com", "senha": "senhaantiga"})
+        self.assertRedirects(response, reverse("inicio"))
+
+
 # HU04-HU08 e HU22-HU24: projetos, Product Backlog, dono e membros, além das regras de
 # integridade dos vínculos das histórias (requisitos 4, 5, 7, 8 e 11)
 class ProjetoTests(TestCase):

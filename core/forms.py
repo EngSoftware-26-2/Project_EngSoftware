@@ -4,26 +4,42 @@ from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db.models import Q
+from .validadores import (
+    EMAIL_DICA, EMAIL_MAX, NOME_DICA, NOME_MAX, SENHA_DICA, SENHA_MAX,
+    validar_nome, validar_senha,
+)
 from .models import Projeto, ProductBacklog, Epico, HistoriaUsuario, CriterioAceitacao, SprintBacklog
 
-# HU01 - Formulário de cadastro: o e-mail é usado como login (username) e não pode repetir;
-# a senha passa pelos validadores de senha do Django.
+# HU01 - Formulário de cadastro: o e-mail é usado como login (username) e não pode repetir.
+# Nome e senha seguem as regras de core/validadores.py; a dica de cada campo aparece embaixo
+# dele na tela.
 class CadastroForm(forms.Form):
     nome = forms.CharField(
         label="Nome",
-        max_length=150
+        max_length=NOME_MAX,
+        help_text=NOME_DICA,
+        validators=[validar_nome],
     )
     email = forms.EmailField(
         label="E-mail",
-        max_length=150
+        max_length=EMAIL_MAX,
+        help_text=EMAIL_DICA,
+        error_messages={"invalid": "Informe um e-mail válido."},
     )
     senha = forms.CharField(
         label="Senha",
-        widget=forms.PasswordInput
+        max_length=SENHA_MAX,
+        help_text=SENHA_DICA,
+        strip=False,
+        validators=[validar_senha],
+        widget=forms.PasswordInput,
     )
     confirmar_senha = forms.CharField(
         label="Confirmar senha",
-        widget=forms.PasswordInput
+        max_length=SENHA_MAX,
+        help_text="Repita a senha.",
+        strip=False,
+        widget=forms.PasswordInput,
     )
 
     def clean_email(self):
@@ -54,6 +70,8 @@ class CadastroForm(forms.Form):
                     "As senhas não coincidem."
                 )
             else:
+                # A senha já passou pelas regras do sistema (validar_senha). O Django ainda
+                # recusa senha comum demais ou parecida com o nome ou o e-mail.
                 usuario = User(
                     username=dados.get("email", ""),
                     email=dados.get("email", ""),
@@ -80,9 +98,14 @@ class CadastroForm(forms.Form):
 
 # HU02 - Formulário de login por e-mail e senha
 class LoginForm(forms.Form):
-    email = forms.EmailField(label="E-mail")
+    email = forms.EmailField(
+        label="E-mail",
+        help_text="O e-mail usado no cadastro.",
+        error_messages={"invalid": "Informe um e-mail válido."},
+    )
     senha = forms.CharField(
         label="Senha",
+        strip=False,
         widget=forms.PasswordInput
     )
 

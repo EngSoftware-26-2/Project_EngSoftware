@@ -3,9 +3,10 @@
 {% block conteudo %}
 <div class="cartao cartao-estreito">
   <h1>Entrar no sistema</h1>
-  <form method="post">
+  <form method="post" novalidate>
     {% csrf_token %}
-    {{ form.as_p }}
+    {% include "core/_erros_gerais.html" %}
+    {% for campo in form %}{% include "core/_campo.html" %}{% endfor %}
     <button type="submit">Entrar</button>
   </form>
   <p>Não possui conta? <a href="{% url 'cadastro' %}">Cadastre-se</a></p>

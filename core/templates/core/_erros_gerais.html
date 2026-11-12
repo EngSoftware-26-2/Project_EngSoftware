@@ -1,0 +1,2 @@
+{% comment %}Erros que não são de um campo só (ex.: "E-mail ou senha inválidos."), mostrados no topo do formulário.{% endcomment %}
+{% for erro in form.non_field_errors %}<div class="mensagem erro-msg" role="alert">{{ erro }}</div>{% endfor %}
