@@ -2,8 +2,6 @@
 
 Trabalho da disciplina de Engenharia de Software (UnB).
 
-Este guia foi escrito para **qualquer pessoa**, mesmo quem nunca programou. Siga as partes na ordem e você terá o sistema funcionando no seu computador.
-
 ---
 
 ## Sumário
