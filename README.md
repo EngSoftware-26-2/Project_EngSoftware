@@ -1,6 +1,6 @@
 # Sistema de Gestão de Requisitos Ágeis
 
-Trabalho da disciplina de Engenharia de Software (UnB).
+Projeto desenvolvido para a disciplina de **Engenharia de Software**.
 
 ---
 
@@ -18,6 +18,7 @@ Trabalho da disciplina de Engenharia de Software (UnB).
 10. [Problemas comuns e como resolver](#10-problemas-comuns-e-como-resolver)
 11. [Para quem é da equipe: testes automáticos](#11-para-quem-é-da-equipe-testes-automáticos)
 12. [Onde estão os documentos do projeto](#12-onde-estão-os-documentos-do-projeto)
+13. [Participantes](#13-participantes)
 
 ---
 
@@ -312,7 +313,6 @@ Seus dados continuam lá: eles ficam no arquivo `db.sqlite3`, dentro da pasta do
 | `no such table` ou `no such column` | O banco não está atualizado. Rode o Passo 5 (`migrate`). |
 | `That port is already in use` | O sistema já está ligado em outra janela. Use aquela, ou feche-a com **Ctrl + C**. |
 | O navegador diz "não é possível acessar esse site" | A janela do terminal com o sistema foi fechada. Ligue de novo (Passo 6). |
-| Esqueci a senha | Ainda não existe recuperação de senha. Crie uma conta nova com outro e-mail. |
 
 ---
 
@@ -335,3 +335,13 @@ Todos os artefatos (documentos da disciplina) ficam na pasta **`artefatos`**, em
 Também na pasta principal:
 - `database_schema.sql` e `database_schema.dbml`: o desenho das tabelas do banco de dados.
 - `requirements.txt`: a lista das peças que o Passo 4 instala.
+
+---
+
+## 13. Participantes
+
+| Nome | Matrícula |
+|Lucas Santana|211060666|
+|  |  |
+|  |  |
+|  |  |
