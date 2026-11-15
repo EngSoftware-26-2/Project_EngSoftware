@@ -2,6 +2,9 @@
 -- Este arquivo cria o esquema do domínio e a tabela de usuários utilizada
 -- pelas relações de dono e membro. Para uma instalação completa do Django,
 -- prefira executar: python manage.py migrate
+-- O modelo abaixo reflete também as migrações 0008 e 0009 do código atual:
+-- situação/responsável da história, encerramento da Sprint e histórico de
+-- histórias devolvidas ao Product Backlog.
 
 PRAGMA foreign_keys = ON;
 
@@ -47,8 +50,16 @@ CREATE TABLE core_sprintbacklog (
     projeto_id INTEGER NOT NULL,
     data_inicio DATE NOT NULL,
     data_fim DATE NOT NULL,
+    encerrado_em DATE NULL,
+    encerrado_por_id INTEGER NULL,
+    cancelado BOOLEAN NOT NULL DEFAULT 0,
+    motivo_cancelamento TEXT NOT NULL,
     FOREIGN KEY (projeto_id) REFERENCES core_projeto (id) ON DELETE CASCADE,
-    CONSTRAINT sprint_periodo_valido CHECK (data_fim >= data_inicio)
+    FOREIGN KEY (encerrado_por_id) REFERENCES auth_user (id) ON DELETE SET NULL,
+    CONSTRAINT sprint_periodo_valido CHECK (data_fim >= data_inicio),
+    CONSTRAINT sprint_cancelado_com_data CHECK (
+        cancelado = 0 OR encerrado_em IS NOT NULL
+    )
 );
 
 -- Épico: pertence a um projeto e pode agrupar várias histórias.
@@ -80,14 +91,17 @@ CREATE TABLE core_historiausuario (
     impact REAL NULL,
     confidence INTEGER NULL,
     effort INTEGER NULL,
+    situacao VARCHAR(20) NOT NULL DEFAULT 'a_fazer',
 
     epico_id INTEGER NULL,
     product_backlog_id INTEGER NULL,
     sprint_backlog_id INTEGER NULL,
+    responsavel_id INTEGER NULL,
 
     FOREIGN KEY (epico_id) REFERENCES core_epico (id) ON DELETE SET NULL,
     FOREIGN KEY (product_backlog_id) REFERENCES core_productbacklog (id) ON DELETE CASCADE,
     FOREIGN KEY (sprint_backlog_id) REFERENCES core_sprintbacklog (id) ON DELETE SET NULL,
+    FOREIGN KEY (responsavel_id) REFERENCES auth_user (id) ON DELETE SET NULL,
 
     CONSTRAINT historia_apenas_um_backlog CHECK (
         product_backlog_id IS NULL OR sprint_backlog_id IS NULL
@@ -106,6 +120,9 @@ CREATE TABLE core_historiausuario (
     ),
     CONSTRAINT historia_effort_fibonacci CHECK (
         effort IS NULL OR effort IN (0, 1, 2, 3, 5, 8, 13, 21, 34, 55)
+    ),
+    CONSTRAINT historia_situacao_valida CHECK (
+        situacao IN ('a_fazer', 'em_desenvolvimento', 'concluida')
     )
 );
 
@@ -119,6 +136,18 @@ CREATE TABLE core_criterioaceitacao (
     FOREIGN KEY (historia_usuario_id)
         REFERENCES core_historiausuario (id)
         ON DELETE CASCADE
+);
+
+-- Histórico das histórias devolvidas ao Product Backlog ao encerrar/cancelar uma Sprint.
+CREATE TABLE core_historiadevolvida (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    titulo VARCHAR(200) NOT NULL,
+    story_points INTEGER NULL,
+    situacao VARCHAR(20) NOT NULL,
+    historia_id INTEGER NULL,
+    sprint_id INTEGER NOT NULL,
+    FOREIGN KEY (historia_id) REFERENCES core_historiausuario (id) ON DELETE SET NULL,
+    FOREIGN KEY (sprint_id) REFERENCES core_sprintbacklog (id) ON DELETE CASCADE
 );
 
 -- Tabela intermediária do relacionamento N:N entre projetos e usuários.
@@ -136,6 +165,8 @@ CREATE INDEX core_projeto_dono_id_idx
     ON core_projeto (dono_id);
 CREATE INDEX core_sprintbacklog_projeto_id_idx
     ON core_sprintbacklog (projeto_id);
+CREATE INDEX core_sprintbacklog_encerrado_por_id_idx
+    ON core_sprintbacklog (encerrado_por_id);
 CREATE INDEX core_epico_projeto_id_idx
     ON core_epico (projeto_id);
 CREATE INDEX core_historiausuario_epico_id_idx
@@ -144,8 +175,14 @@ CREATE INDEX core_historiausuario_product_backlog_id_idx
     ON core_historiausuario (product_backlog_id);
 CREATE INDEX core_historiausuario_sprint_backlog_id_idx
     ON core_historiausuario (sprint_backlog_id);
+CREATE INDEX core_historiausuario_responsavel_id_idx
+    ON core_historiausuario (responsavel_id);
 CREATE INDEX core_criterioaceitacao_historia_id_idx
     ON core_criterioaceitacao (historia_usuario_id);
+CREATE INDEX core_historiadevolvida_historia_id_idx
+    ON core_historiadevolvida (historia_id);
+CREATE INDEX core_historiadevolvida_sprint_id_idx
+    ON core_historiadevolvida (sprint_id);
 CREATE INDEX core_projeto_membros_projeto_id_idx
     ON core_projeto_membros (projeto_id);
 CREATE INDEX core_projeto_membros_user_id_idx

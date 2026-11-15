@@ -45,6 +45,10 @@ Table core_sprintbacklog {
   projeto_id integer [not null]
   data_inicio date [not null]
   data_fim date [not null]
+  encerrado_em date
+  encerrado_por_id integer
+  cancelado boolean [not null, default: false]
+  motivo_cancelamento text [not null]
 }
 
 Table core_epico {
@@ -72,10 +76,12 @@ Table core_historiausuario {
   impact real
   confidence integer
   effort integer
+  situacao varchar(20) [not null, default: 'a_fazer']
 
   epico_id integer
   product_backlog_id integer
   sprint_backlog_id integer
+  responsavel_id integer
 }
 
 Table core_criterioaceitacao {
@@ -84,6 +90,15 @@ Table core_criterioaceitacao {
   quando varchar(255) [not null]
   entao text [not null]
   historia_usuario_id integer [not null]
+}
+
+Table core_historiadevolvida {
+  id integer [pk, increment]
+  titulo varchar(200) [not null]
+  story_points integer
+  situacao varchar(20) [not null]
+  historia_id integer
+  sprint_id integer [not null]
 }
 
 // Dono do projeto: um usuário pode possuir vários projetos.
@@ -100,6 +115,12 @@ Ref: core_projeto.id - core_productbacklog.projeto_id
 Ref: core_projeto.id < core_sprintbacklog.projeto_id
 Ref: core_projeto.id < core_epico.projeto_id
 
+// Usuário responsável por uma história; a validação de dono/membro é feita pela aplicação.
+Ref: auth_user.id < core_historiausuario.responsavel_id
+
+// Usuário que encerrou ou cancelou a Sprint; pode ficar nulo quando o encerramento é automático.
+Ref: auth_user.id < core_sprintbacklog.encerrado_por_id
+
 // Uma história pode estar no Product Backlog ou em uma Sprint, mas não nos dois.
 Ref: core_productbacklog.id < core_historiausuario.product_backlog_id
 Ref: core_sprintbacklog.id < core_historiausuario.sprint_backlog_id
@@ -109,3 +130,7 @@ Ref: core_epico.id < core_historiausuario.epico_id
 
 // Uma história pode possuir vários critérios de aceitação.
 Ref: core_historiausuario.id < core_criterioaceitacao.historia_usuario_id
+
+// Registro histórico das histórias que saíram da Sprint ao seu encerramento.
+Ref: core_historiausuario.id < core_historiadevolvida.historia_id
+Ref: core_sprintbacklog.id < core_historiadevolvida.sprint_id
