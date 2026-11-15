@@ -346,5 +346,6 @@ Também na pasta principal:
 
 |Guilherme Kauã F. do Nascimento|222001449|
 
-|Vinícius Tomé|232006780 |
-|  |  |
+|Vinícius Tomé|232006780|
+
+|Leandro Coelho da Silva|232011396|
