@@ -345,5 +345,5 @@ Também na pasta principal:
 |Lucas Santana|211060666|
 
 |Guilherme Kauã F. do Nascimento|222001449|
-|  |  |
+|Vinícius Tomé|232006780 |
 |  |  |
